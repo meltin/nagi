@@ -54,6 +54,8 @@
 				<string>hiragana.tiff</string>
 				<key>tsInputModePaletteIconFileKey</key>
 				<string>hiragana.tiff</string>
+				<key>TISIconIsTemplate</key>
+				<true/>
 				<key>tsInputModePrimaryInScriptKey</key>
 				<true/>
 				<key>tsInputModeScriptKey</key>
@@ -81,6 +83,8 @@
 				<string>full_katakana.tiff</string>
 				<key>tsInputModePaletteIconFileKey</key>
 				<string>full_katakana.tiff</string>
+				<key>TISIconIsTemplate</key>
+				<true/>
 				<key>tsInputModePrimaryInScriptKey</key>
 				<false/>
 				<key>tsInputModeScriptKey</key>
@@ -108,6 +112,8 @@
 				<string>half_katakana.tiff</string>
 				<key>tsInputModePaletteIconFileKey</key>
 				<string>half_katakana.tiff</string>
+				<key>TISIconIsTemplate</key>
+				<true/>
 				<key>tsInputModePrimaryInScriptKey</key>
 				<false/>
 				<key>tsInputModeScriptKey</key>
@@ -135,6 +141,8 @@
 				<string>full_ascii.tiff</string>
 				<key>tsInputModePaletteIconFileKey</key>
 				<string>full_ascii.tiff</string>
+				<key>TISIconIsTemplate</key>
+				<true/>
 				<key>tsInputModePrimaryInScriptKey</key>
 				<false/>
 				<key>tsInputModeScriptKey</key>
@@ -162,6 +170,8 @@
 				<string>direct.tiff</string>
 				<key>tsInputModePaletteIconFileKey</key>
 				<string>direct.tiff</string>
+				<key>TISIconIsTemplate</key>
+				<true/>
 				<key>tsInputModePrimaryInScriptKey</key>
 				<true/>
 				<key>tsInputModeScriptKey</key>
