@@ -11023,8 +11023,10 @@ TEST_F(ZenzSessionTest, AgreementKeepsTheEngineConversion) {
   zenz_client.Answer("愛上尾");
   command = SendCallback(command, &session);
   EXPECT_PREEDIT("愛上尾", command);
+  // Zenz changed nothing, so the status says who produced the text.
   EXPECT_EQ(command.output().conversion_status(),
-            commands::Output::CONVERSION_STATUS_ZENZ);
+            commands::Output::CONVERSION_STATUS_ENGINE);
+  EXPECT_FALSE(command.output().has_callback());
   // The engine still owns the conversion, so it keeps its own segments.
   EXPECT_FALSE(command.output().preedit().segment(0).key().empty());
 }

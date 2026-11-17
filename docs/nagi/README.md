@@ -85,9 +85,9 @@ Zenz のモデルは、素の llama.cpp が知らないトークナイザ名を�
 | 表示 | 意味 |
 |---|---|
 | 入力中 | 読みのまま。まだ変換していない |
-| Mozc | Mozc が変換した |
+| Mozc | Mozc が変換した。Zenz が同じ結果を返したときも、ここで終わる |
 | Zenz… | Mozc の変換を表示していて、Zenz の結果を待っている |
-| Zenz | Zenz が確認または補正した |
+| Zenz | Zenz が Mozc の変換を書き換えた |
 
 ![明るい外観](images/indicator_light.png) ![暗い外観](images/indicator_dark.png)
 

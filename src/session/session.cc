@@ -814,10 +814,13 @@ bool Session::ApplyZenzCorrection(commands::Command* command) {
       } else if (result.state == zenz::ZenzResult::READY &&
                  zenz::IsAcceptableZenzOutput(live_conversion_reading_,
                                               result.text)) {
-        zenz_state_ = kZenzApplied;
-        // When Zenz agrees with the engine, keep the engine's conversion so
-        // that committing it goes through the engine and is learned.
-        if (result.text != live_conversion_engine_text_) {
+        if (result.text == live_conversion_engine_text_) {
+          // Zenz agrees with the engine. The engine keeps the conversion, so
+          // committing is learned, and the status stays the engine's: the
+          // indicator says Zenz only when Zenz changed the text.
+          zenz_state_ = kZenzDone;
+        } else {
+          zenz_state_ = kZenzApplied;
           zenz_preview_ = std::move(result.text);
         }
       } else {
