@@ -1,3 +1,22 @@
+Nagi(凪)
+===================================
+
+Nagi は、[Mozc](https://github.com/google/mozc) をもとにした macOS 用の日本語入力です。引っかかりのない、静かな入力を目指しています。
+
+Mozc に次の機能を足しています。
+
+- **遅延付きライブ変換:** スペースキーを押す前に、入力中の文字を自動で変換します。待ち時間と最小の文字数を設定できます。
+- **Zenz による補正:** ライブ変換の結果を、この Mac の中で動くニューラルモデル [Zenz](https://huggingface.co/Miwa-Keita/zenz-v3.2-small-gguf) で補正します。入力した内容は外に送りません。
+- **変換状態の表示:** 入力中の文字の近くに、いま表示されている文字が何によるものかを示します(入力中 / Mozc / Zenz… / Zenz)。
+
+使い方、ビルド、今の制限は [docs/nagi/README.md](docs/nagi/README.md) に、設計上の判断は [docs/nagi/decisions.md](docs/nagi/decisions.md) にあります。
+
+Nagi は Google 日本語入力ではありません。Google、google/mozc の公式配布物でもなく、Google によるサポートの対象でもありません。ライブ変換、Zenz の扱い、状態表示の設計は、[Mozkey](https://github.com/koyasi777/mozkey) を参考にしています。Mozc のライセンスと著作権表示は [LICENSE](LICENSE) にあります。
+
+以下は、もとになった Mozc の README です。
+
+---
+
 [Mozc - a Japanese Input Method Editor designed for multi-platform](https://github.com/google/mozc)
 ===================================
 
