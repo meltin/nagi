@@ -36,7 +36,7 @@
                         <action selector="dictionaryToolClicked:" target="-2" id="20"/>
                     </connections>
                 </menuItem>
-                <menuItem title="Mozcについて" id="28">
+                <menuItem title="Nagiについて" id="28">
                     <modifierMask key="keyEquivalentModifierMask"/>
                     <connections>
                         <action selector="aboutDialogClicked:" target="-2" id="29"/>
