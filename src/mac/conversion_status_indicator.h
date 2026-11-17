@@ -15,8 +15,8 @@
 /** Label shown for |status|. Empty for CONVERSION_STATUS_NONE. */
 + (NSString *)labelForStatus:(mozc::commands::Output::ConversionStatus)status;
 
-/** One size for every status, so the indicator does not move when the label changes. */
-+ (NSSize)preferredSize;
+/** Size that fits the label of |status|. */
++ (NSSize)sizeForStatus:(mozc::commands::Output::ConversionStatus)status;
 @end
 
 /** Small floating panel that tells what produced the text in the composition. */

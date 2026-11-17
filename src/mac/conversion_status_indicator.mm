@@ -12,28 +12,20 @@ namespace {
 
 constexpr CGFloat kFontSize = 11;
 constexpr CGFloat kDotSize = 6;
-constexpr CGFloat kPaddingX = 7;
+constexpr CGFloat kPaddingX = 8;
 constexpr CGFloat kPaddingY = 3;
 constexpr CGFloat kDotLabelGap = 5;
-constexpr CGFloat kCornerRadius = 6;
 // Distance between the composition line and the indicator.
 constexpr CGFloat kLineGap = 4;
-
-constexpr Output::ConversionStatus kVisibleStatuses[] = {
-    Output::CONVERSION_STATUS_READING,
-    Output::CONVERSION_STATUS_ENGINE,
-    Output::CONVERSION_STATUS_ZENZ_PENDING,
-    Output::CONVERSION_STATUS_ZENZ,
-};
 
 NSDictionary<NSAttributedStringKey, id> *LabelAttributes() {
   return @{
     NSFontAttributeName : [NSFont systemFontOfSize:kFontSize weight:NSFontWeightMedium],
-    NSForegroundColorAttributeName : NSColor.labelColor,
+    NSForegroundColorAttributeName : NSColor.whiteColor,
   };
 }
 
-NSColor *DotColor(Output::ConversionStatus status) {
+NSColor *ChipColor(Output::ConversionStatus status) {
   switch (status) {
     case Output::CONVERSION_STATUS_ENGINE:
       return NSColor.systemBlueColor;
@@ -65,16 +57,10 @@ NSColor *DotColor(Output::ConversionStatus status) {
   }
 }
 
-+ (NSSize)preferredSize {
-  CGFloat labelWidth = 0;
-  CGFloat labelHeight = 0;
-  for (const Output::ConversionStatus status : kVisibleStatuses) {
-    const NSSize size = [[self labelForStatus:status] sizeWithAttributes:LabelAttributes()];
-    labelWidth = std::max(labelWidth, size.width);
-    labelHeight = std::max(labelHeight, size.height);
-  }
-  return NSMakeSize(std::ceil(kPaddingX * 2 + kDotSize + kDotLabelGap + labelWidth),
-                    std::ceil(kPaddingY * 2 + labelHeight));
++ (NSSize)sizeForStatus:(Output::ConversionStatus)status {
+  const NSSize label = [[self labelForStatus:status] sizeWithAttributes:LabelAttributes()];
+  return NSMakeSize(std::ceil(kPaddingX * 2 + kDotSize + kDotLabelGap + label.width),
+                    std::ceil(kPaddingY * 2 + label.height));
 }
 
 - (void)setStatus:(Output::ConversionStatus)status {
@@ -85,17 +71,13 @@ NSColor *DotColor(Output::ConversionStatus status) {
 }
 
 - (void)drawRect:(NSRect)dirtyRect {
-  const NSRect bounds = NSInsetRect(self.bounds, 0.5, 0.5);
-  NSBezierPath *background = [NSBezierPath bezierPathWithRoundedRect:bounds
-                                                             xRadius:kCornerRadius
-                                                             yRadius:kCornerRadius];
-  [[NSColor.windowBackgroundColor colorWithAlphaComponent:0.95] setFill];
-  [background fill];
-  [NSColor.separatorColor setStroke];
-  [background stroke];
+  // A pill: the corners are half the height.
+  const CGFloat radius = NSHeight(self.bounds) / 2;
+  [ChipColor(_status) setFill];
+  [[NSBezierPath bezierPathWithRoundedRect:self.bounds xRadius:radius yRadius:radius] fill];
 
   const NSRect dot = NSMakeRect(kPaddingX, NSMidY(self.bounds) - kDotSize / 2, kDotSize, kDotSize);
-  [DotColor(_status) setFill];
+  [NSColor.whiteColor setFill];
   [[NSBezierPath bezierPathWithOvalInRect:dot] fill];
 
   NSString *label = [ConversionStatusView labelForStatus:_status];
@@ -135,8 +117,8 @@ NSColor *DotColor(Output::ConversionStatus status) {
   if (panel_) {
     return;
   }
-  const NSSize size = [ConversionStatusView preferredSize];
-  const NSRect frame = NSMakeRect(0, 0, size.width, size.height);
+  // Resized for each status in showStatus:.
+  const NSRect frame = NSMakeRect(0, 0, 1, 1);
   panel_ = [[NSPanel alloc]
       initWithContentRect:frame
                 styleMask:NSWindowStyleMaskBorderless | NSWindowStyleMaskNonactivatingPanel
@@ -173,11 +155,11 @@ NSColor *DotColor(Output::ConversionStatus status) {
       break;
     }
   }
-  const NSSize size = panel_.frame.size;
+  const NSSize size = [ConversionStatusView sizeForStatus:status];
   const NSPoint origin = [ConversionStatusIndicator originForLineRect:lineRect
                                                                  size:size
                                                          visibleFrame:visibleFrame];
-  [panel_ setFrameOrigin:origin];
+  [panel_ setFrame:NSMakeRect(origin.x, origin.y, size.width, size.height) display:YES];
   // Above the client window, like the candidate window.
   panel_.level = std::max<NSInteger>(windowLevel + 1, NSPopUpMenuWindowLevel);
   [panel_ orderFront:nil];

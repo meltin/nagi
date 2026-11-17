@@ -59,7 +59,8 @@ TEST(ConversionStatusIndicatorTest, KeptInsideTheScreen) {
 // without installing the IME.
 TEST(ConversionStatusIndicatorTest, RenderSamples) {
   const char *output_dir = std::getenv("NAGI_INDICATOR_SAMPLE_DIR");
-  const NSSize size = [ConversionStatusView preferredSize];
+  // The widest label, for the canvas.
+  const NSSize size = [ConversionStatusView sizeForStatus:Output::CONVERSION_STATUS_READING];
   EXPECT_GT(size.width, 0);
   EXPECT_GT(size.height, 0);
 
@@ -99,7 +100,8 @@ TEST(ConversionStatusIndicatorTest, RenderSamples) {
       CGFloat y = canvas.height - margin - size.height;
       for (const Output::ConversionStatus status : statuses) {
         ConversionStatusView *view = [[ConversionStatusView alloc]
-            initWithFrame:NSMakeRect(0, 0, size.width, size.height)];
+            initWithFrame:NSMakeRect(0, 0, [ConversionStatusView sizeForStatus:status].width,
+                                     size.height)];
         view.status = status;
         NSAffineTransform *transform = [NSAffineTransform transform];
         [transform translateXBy:margin yBy:y];
