@@ -285,6 +285,10 @@
         <translation>リアルタイム変換を有効にする</translation>
     </message>
     <message>
+        <source>Live conversion</source>
+        <translation>ライブ変換</translation>
+    </message>
+    <message>
         <source>Convert automatically while typing (live conversion)</source>
         <translation>入力しながら自動で変換する(ライブ変換)</translation>
     </message>

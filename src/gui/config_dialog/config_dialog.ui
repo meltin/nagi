@@ -950,57 +950,6 @@
               </property>
              </widget>
             </item>
-            <item row="3" column="0" colspan="3">
-             <widget class="QCheckBox" name="liveConversionCheckBox">
-              <property name="text">
-               <string>Convert automatically while typing (live conversion)</string>
-              </property>
-             </widget>
-            </item>
-            <item row="4" column="0" colspan="2">
-             <widget class="QLabel" name="liveConversionDelayLabel">
-              <property name="text">
-               <string>Wait before live conversion (milliseconds):</string>
-              </property>
-             </widget>
-            </item>
-            <item row="4" column="2">
-             <widget class="QSpinBox" name="liveConversionDelaySpinBox"/>
-            </item>
-            <item row="5" column="0" colspan="2">
-             <widget class="QLabel" name="liveConversionMinKeyLengthLabel">
-              <property name="text">
-               <string>Shortest reading to convert (characters):</string>
-              </property>
-             </widget>
-            </item>
-            <item row="5" column="2">
-             <widget class="QSpinBox" name="liveConversionMinKeyLengthSpinBox"/>
-            </item>
-            <item row="6" column="0" colspan="3">
-             <widget class="QCheckBox" name="conversionStatusIndicatorCheckBox">
-              <property name="text">
-               <string>Show the conversion status next to the text</string>
-              </property>
-             </widget>
-            </item>
-            <item row="7" column="0" colspan="3">
-             <widget class="QCheckBox" name="zenzCorrectionCheckBox">
-              <property name="text">
-               <string>Correct live conversion with Zenz (runs on this Mac)</string>
-              </property>
-             </widget>
-            </item>
-            <item row="8" column="0" colspan="2">
-             <widget class="QLabel" name="zenzDelayLabel">
-              <property name="text">
-               <string>Wait before asking Zenz (milliseconds):</string>
-              </property>
-             </widget>
-            </item>
-            <item row="8" column="2">
-             <widget class="QSpinBox" name="zenzDelaySpinBox"/>
-            </item>
            </layout>
           </widget>
          </item>
@@ -1076,6 +1025,77 @@
          </item>
          <item>
           <spacer name="verticalSpacer_3">
+           <property name="orientation">
+            <enum>Qt::Orientation::Vertical</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>20</width>
+             <height>40</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+        </layout>
+       </widget>
+       <widget class="QWidget" name="liveConversionTab">
+        <attribute name="title">
+         <string>Live conversion</string>
+        </attribute>
+        <layout class="QGridLayout" name="liveConversionTabLayout">
+         <item row="0" column="0" colspan="3">
+          <widget class="QCheckBox" name="liveConversionCheckBox">
+           <property name="text">
+            <string>Convert automatically while typing (live conversion)</string>
+           </property>
+          </widget>
+         </item>
+         <item row="1" column="0" colspan="2">
+          <widget class="QLabel" name="liveConversionDelayLabel">
+           <property name="text">
+            <string>Wait before live conversion (milliseconds):</string>
+           </property>
+          </widget>
+         </item>
+         <item row="1" column="2">
+          <widget class="QSpinBox" name="liveConversionDelaySpinBox"/>
+         </item>
+         <item row="2" column="0" colspan="2">
+          <widget class="QLabel" name="liveConversionMinKeyLengthLabel">
+           <property name="text">
+            <string>Shortest reading to convert (characters):</string>
+           </property>
+          </widget>
+         </item>
+         <item row="2" column="2">
+          <widget class="QSpinBox" name="liveConversionMinKeyLengthSpinBox"/>
+         </item>
+         <item row="3" column="0" colspan="3">
+          <widget class="QCheckBox" name="conversionStatusIndicatorCheckBox">
+           <property name="text">
+            <string>Show the conversion status next to the text</string>
+           </property>
+          </widget>
+         </item>
+         <item row="4" column="0" colspan="3">
+          <widget class="QCheckBox" name="zenzCorrectionCheckBox">
+           <property name="text">
+            <string>Correct live conversion with Zenz (runs on this Mac)</string>
+           </property>
+          </widget>
+         </item>
+         <item row="5" column="0" colspan="2">
+          <widget class="QLabel" name="zenzDelayLabel">
+           <property name="text">
+            <string>Wait before asking Zenz (milliseconds):</string>
+           </property>
+          </widget>
+         </item>
+         <item row="5" column="2">
+          <widget class="QSpinBox" name="zenzDelaySpinBox"/>
+         </item>
+         <item row="6" column="0">
+          <spacer name="liveConversionTabBottomSpacer">
            <property name="orientation">
             <enum>Qt::Orientation::Vertical</enum>
            </property>
