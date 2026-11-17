@@ -816,5 +816,67 @@ TEST_F(MozcImkInputControllerTest, fillSurroundingContext) {
   EXPECT_EQ([mock_client_ getCounter:"markedRange"], 0);
 }
 
+namespace {
+// Runs the main run loop long enough for a short NSTimer to fire.
+void RunMainLoopFor(NSTimeInterval seconds) {
+  [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:seconds]];
+}
+
+commands::Output OutputWithDelayedCallback(uint32_t generation) {
+  commands::Output output;
+  output.set_consumed(true);
+  commands::Output::Callback *callback = output.mutable_callback();
+  callback->set_delay_millisec(20);
+  callback->mutable_session_command()->set_type(
+      commands::SessionCommand::APPLY_LIVE_CONVERSION);
+  callback->mutable_session_command()->set_live_conversion_generation(generation);
+  return output;
+}
+}  // namespace
+
+TEST_F(MozcImkInputControllerTest, DelayedCallbackIsSentAfterTheDelay) {
+  commands::SessionCommand actual_command;
+  EXPECT_CALL(*mock_mozc_client_, SendCommandWithContext(_, _, NotNull()))
+      .Times(1)
+      .WillOnce(DoAll(SaveArg<0>(&actual_command), Return(true)));
+
+  const commands::Output output = OutputWithDelayedCallback(7);
+  [controller_ processOutput:&output client:mock_client_];
+  // Nothing is sent before the delay.
+  EXPECT_FALSE(actual_command.has_type());
+
+  RunMainLoopFor(0.2);
+  EXPECT_EQ(actual_command.type(), commands::SessionCommand::APPLY_LIVE_CONVERSION);
+  EXPECT_EQ(actual_command.live_conversion_generation(), 7);
+}
+
+TEST_F(MozcImkInputControllerTest, NewerOutputReplacesDelayedCallback) {
+  commands::SessionCommand actual_command;
+  EXPECT_CALL(*mock_mozc_client_, SendCommandWithContext(_, _, NotNull()))
+      .Times(1)
+      .WillOnce(DoAll(SaveArg<0>(&actual_command), Return(true)));
+
+  const commands::Output first = OutputWithDelayedCallback(1);
+  const commands::Output second = OutputWithDelayedCallback(2);
+  [controller_ processOutput:&first client:mock_client_];
+  [controller_ processOutput:&second client:mock_client_];
+
+  RunMainLoopFor(0.2);
+  // Only the latest one is sent.
+  EXPECT_EQ(actual_command.live_conversion_generation(), 2);
+}
+
+TEST_F(MozcImkInputControllerTest, OutputWithoutCallbackCancelsDelayedCallback) {
+  EXPECT_CALL(*mock_mozc_client_, SendCommandWithContext(_, _, NotNull())).Times(0);
+
+  const commands::Output scheduled = OutputWithDelayedCallback(1);
+  commands::Output plain;
+  plain.set_consumed(true);
+  [controller_ processOutput:&scheduled client:mock_client_];
+  [controller_ processOutput:&plain client:mock_client_];
+
+  RunMainLoopFor(0.2);
+}
+
 }  // namespace
 }  // namespace mozc

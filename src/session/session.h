@@ -280,6 +280,14 @@ class Session {
   // Undo stack. *begin is the oldest, and *back is the newest.
   std::deque<std::unique_ptr<ImeContext>> undo_contexts_;
 
+  // Nagi live conversion state.
+  bool live_conversion_active_ = false;
+  // Bumped on every key, so a callback scheduled before that key is stale.
+  uint32_t live_conversion_generation_ = 0;
+  // Reading the user turned back to kana with Cancel. Live conversion is not
+  // scheduled again until the reading changes.
+  std::string live_conversion_cancelled_key_;
+
   std::unique_ptr<ImeContext> CreateContext(
       const EngineInterface& engine) const;
 
@@ -364,6 +372,20 @@ class Session {
   bool SendKeyPrecompositionState(mozc::commands::Command* command);
   bool SendKeyCompositionState(mozc::commands::Command* command);
   bool SendKeyConversionState(mozc::commands::Command* command);
+
+  // Nagi live conversion.
+  // Returns true while the conversion on screen was started by the delayed
+  // callback, not by the user.
+  bool IsLiveConversion() const;
+  // Handles a key while a live conversion is on screen.
+  bool SendKeyLiveConversionState(mozc::commands::Command* command);
+  // Asks the client to call back with APPLY_LIVE_CONVERSION after the
+  // configured delay, when the composition is eligible.
+  void MaybeScheduleLiveConversion(mozc::commands::Command* command);
+  // Handles APPLY_LIVE_CONVERSION.
+  bool ApplyLiveConversion(mozc::commands::Command* command);
+  // Returns to COMPOSITION from a live conversion without touching the output.
+  void LeaveLiveConversion();
 
   bool MoveCursorToEndInternal(mozc::commands::Command* command,
                                bool clear_undo);

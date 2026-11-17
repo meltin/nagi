@@ -452,6 +452,11 @@ message SessionCommand {
     // Note: This command resets the internal states (history segments) of the
     // converter.
     REQUEST_NWP = 27;
+
+    // Nagi: applies live conversion to the current composition. Sent by the
+    // client as a delayed callback. Ignored when |live_conversion_generation|
+    // is stale.
+    APPLY_LIVE_CONVERSION = 2000;
   }
   required CommandType type = 1;
 
@@ -489,6 +494,9 @@ message SessionCommand {
   // Assumes that the entries are sorted by the probability.
   // The most probable event should be at the top.
   repeated CompositionEvent composition_events = 11;
+
+  // Nagi: used by APPLY_LIVE_CONVERSION to drop stale delayed callbacks.
+  optional uint32 live_conversion_generation = 2000;
 }
 
 message Context {
@@ -1426,6 +1434,10 @@ message Output {
     optional uint32 delay_millisec = 2;
   }
   optional Callback callback = 18;
+
+  // Nagi: true when the preedit is a live conversion preview, not a
+  // conversion the user started explicitly.
+  optional bool live_conversion = 2000 [default = false];
 
   reserved 19;  // Deprecated storage_entry
   reserved 20;  // Deprecated cloud_sync_status

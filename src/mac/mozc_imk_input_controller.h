@@ -102,6 +102,12 @@
 
   /** |menu_| is the NSMenu to be shown in the pulldown menu-list of the IME. */
   IBOutlet NSMenu *menu_;
+
+  /** A session command the server asked to receive after a delay, such as live conversion.
+   * A newer output replaces it, so only the latest one is ever sent. */
+  NSTimer *delayedSessionCommandTimer_;
+  std::unique_ptr<mozc::commands::SessionCommand> delayedSessionCommand_;
+  id delayedSessionCommandClient_;
 }
 
 /** These are externally accessible to achieve tests. */
@@ -211,6 +217,9 @@
  * @param sender The sender of this request.
  */
 - (void)invokeReconvert:(const mozc::commands::SessionCommand *)command client:(id)sender;
+
+/** Drops the session command waiting for its delay, if any. */
+- (void)cancelDelayedSessionCommand;
 
 /** Conducts the undo command.
  *

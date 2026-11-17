@@ -950,6 +950,33 @@
               </property>
              </widget>
             </item>
+            <item row="3" column="0" colspan="3">
+             <widget class="QCheckBox" name="liveConversionCheckBox">
+              <property name="text">
+               <string>Convert automatically while typing (live conversion)</string>
+              </property>
+             </widget>
+            </item>
+            <item row="4" column="0" colspan="2">
+             <widget class="QLabel" name="liveConversionDelayLabel">
+              <property name="text">
+               <string>Wait before live conversion (milliseconds):</string>
+              </property>
+             </widget>
+            </item>
+            <item row="4" column="2">
+             <widget class="QSpinBox" name="liveConversionDelaySpinBox"/>
+            </item>
+            <item row="5" column="0" colspan="2">
+             <widget class="QLabel" name="liveConversionMinKeyLengthLabel">
+              <property name="text">
+               <string>Shortest reading to convert (characters):</string>
+              </property>
+             </widget>
+            </item>
+            <item row="5" column="2">
+             <widget class="QSpinBox" name="liveConversionMinKeyLengthSpinBox"/>
+            </item>
            </layout>
           </widget>
          </item>

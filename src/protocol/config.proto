@@ -362,6 +362,19 @@ message Config {
 
   //////////////////////////////////////////////////////////////
   //
+  // Nagi (2000-2099)
+  //
+  // Converts the composition automatically while typing.
+  optional bool use_live_conversion = 2000 [default = false];
+
+  // How long to wait after the last key before live conversion starts.
+  optional uint32 live_conversion_delay_msec = 2001 [default = 200];
+
+  // Live conversion starts when the reading has at least this many characters.
+  optional uint32 live_conversion_min_key_length = 2002 [default = 2];
+
+  //////////////////////////////////////////////////////////////
+  //
   // Cloud (300-319)
   //
   // Configuration for cloud sync feature. This field is obsolete.

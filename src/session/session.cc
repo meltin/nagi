@@ -41,6 +41,7 @@
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "base/clock.h"
@@ -386,6 +387,9 @@ bool Session::SendCommand(commands::Command* command) {
     case commands::SessionCommand::UPDATE_COMPOSITION:
       result = UpdateComposition(command);
       break;
+    case commands::SessionCommand::APPLY_LIVE_CONVERSION:
+      result = ApplyLiveConversion(command);
+      break;
     case commands::SessionCommand::REQUEST_NWP: {
       ConversionPreferences conversion_preferences =
           context_->converter().conversion_preferences();
@@ -406,6 +410,9 @@ bool Session::SendCommand(commands::Command* command) {
       LOG(WARNING) << "Unknown command" << *command;
       result = DoNothing(command);
       break;
+  }
+  if (context_->state() != ImeContext::CONVERSION) {
+    live_conversion_active_ = false;
   }
   MaybeSetUndoStatus(command);
   return result;
@@ -515,6 +522,9 @@ bool Session::SendKey(commands::Command* command) {
   // state instead of directly using context_->state().
   HandleIndirectImeOnOff(command);
 
+  // Any key makes a live conversion callback scheduled earlier stale.
+  ++live_conversion_generation_;
+
   bool result = false;
   switch (context_->state()) {
     case ImeContext::DIRECT:
@@ -530,7 +540,8 @@ bool Session::SendKey(commands::Command* command) {
       break;
 
     case ImeContext::CONVERSION:
-      result = SendKeyConversionState(command);
+      result = IsLiveConversion() ? SendKeyLiveConversionState(command)
+                                  : SendKeyConversionState(command);
       break;
 
     case ImeContext::NONE:
@@ -538,8 +549,139 @@ bool Session::SendKey(commands::Command* command) {
       break;
   }
 
+  if (context_->state() != ImeContext::CONVERSION) {
+    live_conversion_active_ = false;
+  }
+  if (result) {
+    MaybeScheduleLiveConversion(command);
+  }
   MaybeSetUndoStatus(command);
   return result;
+}
+
+bool Session::IsLiveConversion() const {
+  return live_conversion_active_ &&
+         context_->state() == ImeContext::CONVERSION;
+}
+
+void Session::LeaveLiveConversion() {
+  context_->mutable_converter()->Cancel();
+  SetSessionState(ImeContext::COMPOSITION, context_.get());
+  live_conversion_active_ = false;
+}
+
+bool Session::SendKeyLiveConversionState(commands::Command* command) {
+  const keymap::KeyMapManager* keymap = &context_->GetKeyMapManager();
+  const commands::KeyEvent& key = command->input().key();
+
+  // Editing keys act on the reading, as if the preview were not there.
+  keymap::CompositionState::Commands composition_command;
+  if (keymap->GetCommandComposition(key, &composition_command)) {
+    if (composition_command == keymap::CompositionState::BACKSPACE) {
+      LeaveLiveConversion();
+      return Backspace(command);
+    }
+    if (composition_command == keymap::CompositionState::DEL) {
+      LeaveLiveConversion();
+      return Delete(command);
+    }
+  }
+
+  keymap::ConversionState::Commands conversion_command;
+  if (!keymap->GetCommandConversion(key, &conversion_command)) {
+    return DoNothing(command);
+  }
+  switch (conversion_command) {
+    case keymap::ConversionState::INSERT_CHARACTER:
+      // InsertCharacter() leaves the live conversion by itself.
+      return InsertCharacter(command);
+    case keymap::ConversionState::CANCEL:
+      // Back to kana. Do not convert the same reading again by itself.
+      live_conversion_active_ = false;
+      live_conversion_cancelled_key_ =
+          context_->composer().GetQueryForConversion();
+      return ConvertCancel(command);
+    default:
+      // Commit, next candidate, segment operations and so on. From here the
+      // user is driving an ordinary conversion, which must not be rewritten.
+      live_conversion_active_ = false;
+      return SendKeyConversionState(command);
+  }
+}
+
+void Session::MaybeScheduleLiveConversion(commands::Command* command) {
+  const config::Config& config = context_->GetConfig();
+  if (!config.use_live_conversion() ||
+      context_->state() != ImeContext::COMPOSITION ||
+      command->output().has_callback()) {
+    return;
+  }
+  const composer::Composer& composer = context_->composer();
+  if (composer.GetInputMode() != transliteration::HIRAGANA ||
+      composer.GetInputFieldType() == commands::Context::PASSWORD ||
+      composer.GetCursor() != composer.GetLength() ||
+      composer.GetLength() < config.live_conversion_min_key_length()) {
+    return;
+  }
+  // Wait while a romaji sequence is still open, as in "sy" or "あいうk".
+  const std::string reading = composer.GetQueryForConversion();
+  if (reading.empty() ||
+      absl::ascii_isalpha(static_cast<unsigned char>(reading.back()))) {
+    return;
+  }
+  if (!live_conversion_cancelled_key_.empty()) {
+    if (reading == live_conversion_cancelled_key_) {
+      return;
+    }
+    live_conversion_cancelled_key_.clear();
+  }
+  commands::Output::Callback* callback =
+      command->mutable_output()->mutable_callback();
+  callback->set_delay_millisec(config.live_conversion_delay_msec());
+  commands::SessionCommand* session_command =
+      callback->mutable_session_command();
+  session_command->set_type(commands::SessionCommand::APPLY_LIVE_CONVERSION);
+  session_command->set_live_conversion_generation(live_conversion_generation_);
+}
+
+bool Session::ApplyLiveConversion(commands::Command* command) {
+  command->mutable_output()->set_consumed(true);
+  if (!context_->GetConfig().use_live_conversion() ||
+      context_->state() != ImeContext::COMPOSITION ||
+      command->input().command().live_conversion_generation() !=
+          live_conversion_generation_) {
+    // Stale or no longer wanted. Report the current state unchanged.
+    if (context_->state() == ImeContext::COMPOSITION &&
+        !context_->converter().IsActive()) {
+      OutputComposition(command);
+    } else {
+      OutputFromState(command);
+    }
+    return true;
+  }
+  if (!context_->mutable_converter()->Convert(context_->composer(),
+                                              context_->client_context())) {
+    OutputComposition(command);
+    return true;
+  }
+  SetSessionState(ImeContext::CONVERSION, context_.get());
+  live_conversion_active_ = true;
+  Output(command);
+
+  // Show a preview, not a conversion with a focused segment.
+  commands::Output* output = command->mutable_output();
+  output->set_live_conversion(true);
+  if (output->has_preedit()) {
+    commands::Preedit* preedit = output->mutable_preedit();
+    uint32_t length = 0;
+    for (commands::Preedit::Segment& segment : *preedit->mutable_segment()) {
+      segment.set_annotation(commands::Preedit::Segment::UNDERLINE);
+      length += segment.value_length();
+    }
+    preedit->set_cursor(length);
+    preedit->clear_highlighted_position();
+  }
+  return true;
 }
 
 bool Session::UpdateCompositionInternal(commands::Command* command) {
@@ -1513,6 +1655,11 @@ bool Session::InsertCharacter(commands::Command* command) {
   }
 
   command->mutable_output()->set_consumed(true);
+
+  // Typing on a live conversion preview continues the reading.
+  if (IsLiveConversion()) {
+    LeaveLiveConversion();
+  }
 
   // Handle shortcut keys selecting a candidate from a list.
   if (MaybeSelectCandidate(command)) {

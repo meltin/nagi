@@ -10592,5 +10592,124 @@ TEST_F(SessionTest, MultiSegmentSubmitCandidate) {
   EXPECT_EQ(command.output().result().value(), "脱ぐ");
 }
 
+TEST_F(SessionTest, LiveConversionIsOffByDefault) {
+  MockEngine engine;
+  std::shared_ptr<MockConverter> converter = CreateEngineConverterMock(&engine);
+
+  Session session(engine);
+  InitSessionToPrecomposition(&session);
+  commands::Command command;
+  InsertCharacterChars("aiueo", &session, &command);
+
+  EXPECT_FALSE(command.output().has_callback());
+  EXPECT_PREEDIT("あいうえお", command);
+}
+
+TEST_F(SessionTest, LiveConversionCallback) {
+  MockEngine engine;
+  std::shared_ptr<MockConverter> converter = CreateEngineConverterMock(&engine);
+
+  Segments segments;
+  SetAiueo(&segments);
+  segments.mutable_segment(0)->mutable_candidate(0)->value = "愛上尾";
+  ConversionRequest default_request;
+  FillT13Ns(default_request, &segments);
+  EXPECT_CALL(*converter, StartConversion(_, _))
+      .WillRepeatedly(DoAll(SetArgPointee<1>(segments), Return(true)));
+
+  config::Config config;
+  config.set_use_live_conversion(true);
+  config.set_live_conversion_delay_msec(123);
+  Session session(engine);
+  session.SetConfig(config);
+  InitSessionToPrecomposition(&session);
+  commands::Command command;
+  InsertCharacterChars("aiueo", &session, &command);
+
+  // The key only schedules the conversion.
+  EXPECT_PREEDIT("あいうえお", command);
+  EXPECT_FALSE(command.output().live_conversion());
+  ASSERT_TRUE(command.output().has_callback());
+  EXPECT_EQ(command.output().callback().delay_millisec(), 123);
+  const commands::SessionCommand callback =
+      command.output().callback().session_command();
+  EXPECT_EQ(callback.type(), commands::SessionCommand::APPLY_LIVE_CONVERSION);
+
+  // A callback from an older key is dropped and leaves the reading as is.
+  {
+    commands::Command stale;
+    *stale.mutable_input()->mutable_command() = callback;
+    stale.mutable_input()->mutable_command()->set_live_conversion_generation(
+        callback.live_conversion_generation() - 1);
+    EXPECT_TRUE(session.SendCommand(&stale));
+    EXPECT_FALSE(stale.output().live_conversion());
+    EXPECT_PREEDIT("あいうえお", stale);
+  }
+
+  // The current callback shows the preview without a focused segment.
+  {
+    commands::Command apply;
+    *apply.mutable_input()->mutable_command() = callback;
+    EXPECT_TRUE(session.SendCommand(&apply));
+    EXPECT_TRUE(apply.output().live_conversion());
+    EXPECT_PREEDIT("愛上尾", apply);
+    for (const commands::Preedit::Segment& segment :
+         apply.output().preedit().segment()) {
+      EXPECT_EQ(segment.annotation(), commands::Preedit::Segment::UNDERLINE);
+    }
+    EXPECT_EQ(apply.output().preedit().cursor(), 3);
+    EXPECT_FALSE(apply.output().preedit().has_highlighted_position());
+    EXPECT_FALSE(apply.output().has_candidate_window());
+  }
+
+  // Applying twice does nothing more: the state is no longer COMPOSITION.
+  {
+    commands::Command again;
+    *again.mutable_input()->mutable_command() = callback;
+    EXPECT_TRUE(session.SendCommand(&again));
+    EXPECT_FALSE(again.output().live_conversion());
+    EXPECT_PREEDIT("愛上尾", again);
+  }
+
+  // Typing on the preview continues the reading instead of committing.
+  command.Clear();
+  InsertCharacterChars("a", &session, &command);
+  EXPECT_FALSE(command.output().has_result());
+  EXPECT_PREEDIT("あいうえおあ", command);
+  ASSERT_TRUE(command.output().has_callback());
+  EXPECT_NE(command.output()
+                .callback()
+                .session_command()
+                .live_conversion_generation(),
+            callback.live_conversion_generation());
+}
+
+TEST_F(SessionTest, LiveConversionWaitsForShortOrOpenReading) {
+  MockEngine engine;
+  std::shared_ptr<MockConverter> converter = CreateEngineConverterMock(&engine);
+
+  config::Config config;
+  config.set_use_live_conversion(true);
+  config.set_live_conversion_min_key_length(3);
+  Session session(engine);
+  session.SetConfig(config);
+  InitSessionToPrecomposition(&session);
+  commands::Command command;
+
+  // Shorter than the minimum.
+  InsertCharacterChars("ai", &session, &command);
+  EXPECT_FALSE(command.output().has_callback());
+
+  // Long enough.
+  command.Clear();
+  InsertCharacterChars("u", &session, &command);
+  EXPECT_TRUE(command.output().has_callback());
+
+  // A romaji sequence is still open.
+  command.Clear();
+  InsertCharacterChars("k", &session, &command);
+  EXPECT_FALSE(command.output().has_callback());
+}
+
 }  // namespace session
 }  // namespace mozc

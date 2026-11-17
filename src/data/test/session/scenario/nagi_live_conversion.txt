@@ -1,0 +1,56 @@
+# Nagi live conversion.
+# The scenario tool sends a callback right after the command that asked for it,
+# so the preview appears after every key here.
+
+SET_CONFIG	preedit_method	ROMAN
+SWITCH_COMPOSITION_MODE	HIRAGANA
+SET_CONFIG	session_keymap	MSIME
+SET_CONFIG	use_live_conversion	true
+SEND_KEY	ON
+RESET_CONTEXT
+
+# The preview follows the reading while typing, and Enter commits it.
+SEND_KEYS	syuugou
+EXPECT_PREEDIT	集合
+SEND_KEYS	suru
+EXPECT_PREEDIT	集合する
+SEND_KEY	ENTER
+EXPECT_RESULT	集合する
+
+# Backspace edits the reading under the preview.
+RESET_CONTEXT
+SEND_KEYS	syuugousuru
+EXPECT_PREEDIT	集合する
+SEND_KEY	BACKSPACE
+SEND_KEYS	ru
+EXPECT_PREEDIT	集合する
+SEND_KEY	ENTER
+EXPECT_RESULT	集合する
+
+# ESC goes back to kana and the same reading is not converted again.
+RESET_CONTEXT
+SEND_KEYS	syuugousuru
+EXPECT_PREEDIT	集合する
+SEND_KEY	ESC
+EXPECT_PREEDIT	しゅうごうする
+# Space still converts it on request.
+SEND_KEY	SPACE
+EXPECT_PREEDIT	集合する
+SEND_KEY	ENTER
+EXPECT_RESULT	集合する
+
+# A reading shorter than the minimum length stays as kana.
+RESET_CONTEXT
+SEND_KEYS	ki
+EXPECT_PREEDIT	き
+SEND_KEY	ESC
+
+# Space on the preview starts an ordinary conversion with candidates.
+# Typing after that commits, as in a conversion without live conversion.
+RESET_CONTEXT
+SEND_KEYS	syuugousuru
+SEND_KEY	SPACE
+EXPECT_HAS_CANDIDATES
+EXPECT_IN_ALL_CANDIDATE_WORDS	集合する
+SEND_KEYS	a
+EXPECT_PREEDIT	あ

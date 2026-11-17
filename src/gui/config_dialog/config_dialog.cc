@@ -139,6 +139,9 @@ ConfigDialog::ConfigDialog()
 #endif  // NDEBUG
 
   suggestionsSizeSpinBox->setRange(1, 9);
+  liveConversionDelaySpinBox->setRange(0, 2000);
+  liveConversionDelaySpinBox->setSingleStep(10);
+  liveConversionMinKeyLengthSpinBox->setRange(1, 20);
 
   punctuationsSettingComboBox->addItem(QString::fromUtf8("、。"));
   punctuationsSettingComboBox->addItem(QString::fromUtf8("，．"));
@@ -562,6 +565,11 @@ void ConfigDialog::ConvertFromProto(const config::Config& config) {
   SET_CHECKBOX(historySuggestCheckBox, use_history_suggest);
   SET_CHECKBOX(dictionarySuggestCheckBox, use_dictionary_suggest);
   SET_CHECKBOX(realtimeConversionCheckBox, use_realtime_conversion);
+  SET_CHECKBOX(liveConversionCheckBox, use_live_conversion);
+  liveConversionDelaySpinBox->setValue(
+      std::clamp<int>(config.live_conversion_delay_msec(), 0, 2000));
+  liveConversionMinKeyLengthSpinBox->setValue(
+      std::clamp<int>(config.live_conversion_min_key_length(), 1, 20));
 
   suggestionsSizeSpinBox->setValue(
       std::clamp<int>(config.suggestions_size(), 1, 9));
@@ -655,6 +663,11 @@ void ConfigDialog::ConvertToProto(config::Config* config) const {
   GET_CHECKBOX(historySuggestCheckBox, use_history_suggest);
   GET_CHECKBOX(dictionarySuggestCheckBox, use_dictionary_suggest);
   GET_CHECKBOX(realtimeConversionCheckBox, use_realtime_conversion);
+  GET_CHECKBOX(liveConversionCheckBox, use_live_conversion);
+  config->set_live_conversion_delay_msec(
+      static_cast<uint32_t>(liveConversionDelaySpinBox->value()));
+  config->set_live_conversion_min_key_length(
+      static_cast<uint32_t>(liveConversionMinKeyLengthSpinBox->value()));
 
   config->set_suggestions_size(
       static_cast<uint32_t>(suggestionsSizeSpinBox->value()));

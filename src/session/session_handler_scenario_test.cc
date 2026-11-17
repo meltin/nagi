@@ -137,6 +137,7 @@ const char* kScenarioFileList[] = {
     DATA_DIR "handwriting.txt",
     DATA_DIR "insert_characters.txt",
     DATA_DIR "mobile_partial_variant_candidates.txt",
+    DATA_DIR "nagi_live_conversion.txt",
     DATA_DIR "on_off_cancel.txt",
     DATA_DIR "partial_suggestion.txt",
     DATA_DIR "pending_character.txt",

@@ -253,6 +253,7 @@ bool CanSurroundingText(absl::string_view bundle_id) {
 }
 
 - (void)dealloc {
+  [self cancelDelayedSessionCommand];
   keyCodeMap_ = nil;
   originalString_ = nil;
   composedString_ = nil;
@@ -316,6 +317,7 @@ bool CanSurroundingText(absl::string_view bundle_id) {
   if (mozcRenderer_) {
     mozcRenderer_->ExecCommand(clearCommand);
   }
+  [self cancelDelayedSessionCommand];
   DLOG(INFO) << kProductNameInEnglish << " client (" << self << "): deactivated";
   DLOG(INFO) << "sender bundleID: " << clientBundle_;
   [super deactivateServer:sender];
@@ -542,6 +544,8 @@ bool CanSurroundingText(absl::string_view bundle_id) {
 }
 
 - (void)processOutput:(const mozc::commands::Output *)output client:(id)sender {
+  // Whatever happened, a command scheduled for the previous output is stale.
+  [self cancelDelayedSessionCommand];
   if (output == nullptr) {
     return;
   }
@@ -620,16 +624,49 @@ bool CanSurroundingText(absl::string_view bundle_id) {
 
   // Handle callbacks.
   if (output->has_callback() && output->callback().has_session_command()) {
-    const SessionCommand &callback_command = output->callback().session_command();
-    if (callback_command.type() == SessionCommand::CONVERT_REVERSE) {
-      [self invokeReconvert:&callback_command client:sender];
-    } else if (callback_command.type() == SessionCommand::UNDO) {
-      [self invokeUndo:sender];
+    const Output::Callback &callback = output->callback();
+    const SessionCommand &callback_command = callback.session_command();
+    if (callback.delay_millisec() > 0) {
+      delayedSessionCommand_ = std::make_unique<SessionCommand>(callback_command);
+      delayedSessionCommandClient_ = sender;
+      delayedSessionCommandTimer_ =
+          [NSTimer scheduledTimerWithTimeInterval:callback.delay_millisec() / 1000.0
+                                           target:self
+                                         selector:@selector(delayedSessionCommandTimerFired:)
+                                         userInfo:nil
+                                          repeats:NO];
     } else {
-      Output output_for_callback;
-      if (mozcClient_->SendCommand(callback_command, &output_for_callback)) {
-        [self processOutput:&output_for_callback client:sender];
-      }
+      [self dispatchSessionCommand:&callback_command client:sender];
+    }
+  }
+}
+
+- (void)cancelDelayedSessionCommand {
+  [delayedSessionCommandTimer_ invalidate];
+  delayedSessionCommandTimer_ = nil;
+  delayedSessionCommand_.reset();
+  delayedSessionCommandClient_ = nil;
+}
+
+- (void)delayedSessionCommandTimerFired:(NSTimer *)timer {
+  if (timer != delayedSessionCommandTimer_ || !delayedSessionCommand_) {
+    return;
+  }
+  const SessionCommand command = *delayedSessionCommand_;
+  id sender = delayedSessionCommandClient_;
+  [self cancelDelayedSessionCommand];
+  [self dispatchSessionCommand:&command client:sender];
+}
+
+- (void)dispatchSessionCommand:(const SessionCommand *)command client:(id)sender {
+  if (command->type() == SessionCommand::CONVERT_REVERSE) {
+    [self invokeReconvert:command client:sender];
+  } else if (command->type() == SessionCommand::UNDO) {
+    [self invokeUndo:sender];
+  } else {
+    Output output_for_callback;
+    if (mozcClient_->SendCommand(*command, &output_for_callback)) {
+      [self processOutput:&output_for_callback client:sender];
     }
   }
 }
@@ -688,6 +725,7 @@ bool CanSurroundingText(absl::string_view bundle_id) {
 }
 
 - (void)commitComposition:(id)sender {
+  [self cancelDelayedSessionCommand];
   if ([composedString_ length] == 0) {
     DLOG(INFO) << "Nothing is committed.";
     return;
