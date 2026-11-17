@@ -730,6 +730,9 @@ void Session::DecorateLivePreview(commands::Command* command) {
   // Show a preview, not a conversion with a focused segment.
   commands::Output* output = command->mutable_output();
   output->set_live_conversion(true);
+  // The engine opens the candidate window by itself when a candidate is a
+  // spelling correction. A preview nobody asked to convert must not pop it up.
+  output->clear_candidate_window();
   if (output->has_preedit()) {
     commands::Preedit* preedit = output->mutable_preedit();
     std::string engine_text;

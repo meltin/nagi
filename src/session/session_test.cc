@@ -10814,11 +10814,15 @@ class ZenzSessionTest : public SessionTest {
     return command;
   }
 
-  void SetUpEngine(MockEngine* engine) {
+  void SetUpEngine(MockEngine* engine, bool spelling_correction = false) {
     converter_ = CreateEngineConverterMock(engine);
     Segments segments;
     SetAiueo(&segments);
     segments.mutable_segment(0)->mutable_candidate(0)->value = "愛上尾";
+    if (spelling_correction) {
+      segments.mutable_segment(0)->mutable_candidate(0)->attributes |=
+          converter::Attribute::SPELLING_CORRECTION;
+    }
     ConversionRequest default_request;
     FillT13Ns(default_request, &segments);
     EXPECT_CALL(*converter_, StartConversion(_, _))
@@ -10905,6 +10909,25 @@ TEST_F(ZenzSessionTest, UnboundKeyKeepsThePreviewAndWhatEnterCommits) {
   command.Clear();
   SendKey("Enter", &session, &command);
   EXPECT_RESULT_AND_KEY("アイウエオ", "あいうえお", command);
+}
+
+TEST_F(ZenzSessionTest, PreviewDoesNotOpenTheCandidateWindow) {
+  FakeZenzClient zenz_client;
+  MockEngine engine;
+  // A spelling correction makes the engine show the candidate window at once.
+  SetUpEngine(&engine, true);
+  Session session(engine);
+  session.SetConfig(ZenzConfig());
+  InitSessionToPrecomposition(&session);
+
+  commands::Command command = TypeAndApplyLiveConversion(&session);
+  EXPECT_PREEDIT("愛上尾", command);
+  EXPECT_FALSE(command.output().has_candidate_window());
+
+  // Space is an ordinary conversion, which shows it.
+  command.Clear();
+  SendKey("Space", &session, &command);
+  EXPECT_TRUE(command.output().has_candidate_window());
 }
 
 TEST_F(ZenzSessionTest, UnboundKeyKeepsPollingWhileZenzIsPending) {
