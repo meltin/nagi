@@ -2878,6 +2878,14 @@ void Session::OutputMode(commands::Command* command) const {
   }
   status->set_mode(mode);
   status->set_comeback_mode(comeback_mode);
+
+  if (context_->GetConfig().use_conversion_status_indicator()) {
+    if (context_->state() == ImeContext::COMPOSITION) {
+      output->set_conversion_status(commands::Output::CONVERSION_STATUS_READING);
+    } else if (context_->state() == ImeContext::CONVERSION) {
+      output->set_conversion_status(commands::Output::CONVERSION_STATUS_ENGINE);
+    }
+  }
 }
 
 void Session::OutputComposition(commands::Command* command) const {

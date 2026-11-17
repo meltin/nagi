@@ -977,6 +977,13 @@
             <item row="5" column="2">
              <widget class="QSpinBox" name="liveConversionMinKeyLengthSpinBox"/>
             </item>
+            <item row="6" column="0" colspan="3">
+             <widget class="QCheckBox" name="conversionStatusIndicatorCheckBox">
+              <property name="text">
+               <string>Show the conversion status next to the text</string>
+              </property>
+             </widget>
+            </item>
            </layout>
           </widget>
          </item>

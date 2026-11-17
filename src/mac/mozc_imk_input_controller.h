@@ -108,6 +108,9 @@
   NSTimer *delayedSessionCommandTimer_;
   std::unique_ptr<mozc::commands::SessionCommand> delayedSessionCommand_;
   id delayedSessionCommandClient_;
+
+  /** What the conversion status indicator should show for the current composition. */
+  mozc::commands::Output::ConversionStatus conversionStatus_;
 }
 
 /** These are externally accessible to achieve tests. */

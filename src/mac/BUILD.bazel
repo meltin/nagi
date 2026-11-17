@@ -153,6 +153,25 @@ mozc_objc_library(
 )
 
 mozc_objc_library(
+    name = "conversion_status_indicator",
+    srcs = ["conversion_status_indicator.mm"],
+    hdrs = ["conversion_status_indicator.h"],
+    sdk_frameworks = ["Cocoa"],
+    deps = ["//protocol:commands_cc_proto"],
+)
+
+mozc_objc_test(
+    name = "conversion_status_indicator_test",
+    size = "small",
+    srcs = ["conversion_status_indicator_test.mm"],
+    deps = [
+        ":conversion_status_indicator",
+        "//protocol:commands_cc_proto",
+        "//testing:gunit_main_objc",
+    ],
+)
+
+mozc_objc_library(
     name = "mozc_imk_input_controller",
     srcs = ["mozc_imk_input_controller.mm"],
     hdrs = ["mozc_imk_input_controller.h"],
@@ -168,6 +187,7 @@ mozc_objc_library(
     tags = ["manual"],
     deps = [
         ":common",
+        ":conversion_status_indicator",
         ":keycode_map",
         ":renderer_receiver",
         "//base:const",

@@ -10711,5 +10711,49 @@ TEST_F(SessionTest, LiveConversionWaitsForShortOrOpenReading) {
   EXPECT_FALSE(command.output().has_callback());
 }
 
+TEST_F(SessionTest, ConversionStatusFollowsTheState) {
+  MockEngine engine;
+  std::shared_ptr<MockConverter> converter = CreateEngineConverterMock(&engine);
+
+  Segments segments;
+  SetAiueo(&segments);
+  ConversionRequest default_request;
+  FillT13Ns(default_request, &segments);
+  EXPECT_CALL(*converter, StartConversion(_, _))
+      .WillRepeatedly(DoAll(SetArgPointee<1>(segments), Return(true)));
+
+  config::Config config;
+  config.set_use_conversion_status_indicator(true);
+  Session session(engine);
+  session.SetConfig(config);
+  InitSessionToPrecomposition(&session);
+  commands::Command command;
+
+  InsertCharacterChars("aiueo", &session, &command);
+  EXPECT_EQ(command.output().conversion_status(),
+            commands::Output::CONVERSION_STATUS_READING);
+
+  command.Clear();
+  session.Convert(&command);
+  EXPECT_EQ(command.output().conversion_status(),
+            commands::Output::CONVERSION_STATUS_ENGINE);
+
+  command.Clear();
+  session.Commit(&command);
+  EXPECT_EQ(command.output().conversion_status(),
+            commands::Output::CONVERSION_STATUS_NONE);
+}
+
+TEST_F(SessionTest, ConversionStatusIsOffByDefault) {
+  MockEngine engine;
+  std::shared_ptr<MockConverter> converter = CreateEngineConverterMock(&engine);
+
+  Session session(engine);
+  InitSessionToPrecomposition(&session);
+  commands::Command command;
+  InsertCharacterChars("aiueo", &session, &command);
+  EXPECT_FALSE(command.output().has_conversion_status());
+}
+
 }  // namespace session
 }  // namespace mozc

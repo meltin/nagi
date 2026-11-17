@@ -47,6 +47,7 @@
 #include <utility>
 
 #import "mac/KeyCodeMap.h"
+#import "mac/conversion_status_indicator.h"
 #import "mac/renderer_receiver.h"
 
 #include "absl/log/log.h"
@@ -318,6 +319,7 @@ bool CanSurroundingText(absl::string_view bundle_id) {
     mozcRenderer_->ExecCommand(clearCommand);
   }
   [self cancelDelayedSessionCommand];
+  [self updateConversionStatus:Output::CONVERSION_STATUS_NONE];
   DLOG(INFO) << kProductNameInEnglish << " client (" << self << "): deactivated";
   DLOG(INFO) << "sender bundleID: " << clientBundle_;
   [super deactivateServer:sender];
@@ -589,6 +591,9 @@ bool CanSurroundingText(absl::string_view bundle_id) {
 
   [self updateComposedString:&(output->preedit())];
   [self updateCandidates:output];
+  [self updateConversionStatus:(output->preedit().segment_size() > 0
+                                    ? output->conversion_status()
+                                    : Output::CONVERSION_STATUS_NONE)];
 
   if (output->has_mode()) {
     CompositionMode new_mode = output->mode();
@@ -641,6 +646,49 @@ bool CanSurroundingText(absl::string_view bundle_id) {
   }
 }
 
+- (void)updateConversionStatus:(Output::ConversionStatus)status {
+  conversionStatus_ = status;
+  if (status == Output::CONVERSION_STATUS_NONE) {
+    [[ConversionStatusIndicator sharedIndicator] hide];
+    return;
+  }
+  // Ask for the caret position in the next event loop, as updateCandidates: does.
+  [NSObject cancelPreviousPerformRequestsWithTarget:self
+                                           selector:@selector(delayedShowConversionStatus)
+                                             object:nil];
+  [self performSelector:@selector(delayedShowConversionStatus) withObject:nil afterDelay:0];
+}
+
+- (void)delayedShowConversionStatus {
+  if (conversionStatus_ == Output::CONVERSION_STATUS_NONE) {
+    return;
+  }
+  id client = [self client];
+  if (![client respondsToSelector:@selector(attributesForCharacterIndex:lineHeightRectangle:)]) {
+    return;
+  }
+  NSRect lineRect = NSZeroRect;
+  // Some applications throw from attributesForCharacterIndex.
+  @try {
+    [client attributesForCharacterIndex:0 lineHeightRectangle:&lineRect];
+  } @catch (NSException *exception) {
+    LOG(ERROR) << "Exception from [" << clientBundle_ << "] " << [[exception name] UTF8String];
+    [[ConversionStatusIndicator sharedIndicator] hide];
+    return;
+  }
+  // Without a position there is no good place for the indicator.
+  if (NSEqualRects(lineRect, NSZeroRect)) {
+    [[ConversionStatusIndicator sharedIndicator] hide];
+    return;
+  }
+  const NSInteger windowLevel = [client respondsToSelector:@selector(windowLevel)]
+                                    ? [static_cast<id<IMKTextInput>>(client) windowLevel]
+                                    : 0;
+  [[ConversionStatusIndicator sharedIndicator] showStatus:conversionStatus_
+                                             nearLineRect:lineRect
+                                              windowLevel:windowLevel];
+}
+
 - (void)cancelDelayedSessionCommand {
   [delayedSessionCommandTimer_ invalidate];
   delayedSessionCommandTimer_ = nil;
@@ -689,6 +737,9 @@ bool CanSurroundingText(absl::string_view bundle_id) {
 }
 
 - (void)updateComposedString:(const Preedit *)preedit {
+  if (preedit == nullptr || preedit->segment_size() == 0) {
+    [self updateConversionStatus:Output::CONVERSION_STATUS_NONE];
+  }
   // If the last and the current composed string length is 0,
   // we don't update the composition.
   if (([composedString_ length] == 0) && ((preedit == nullptr || preedit->segment_size() == 0))) {

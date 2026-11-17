@@ -1439,6 +1439,23 @@ message Output {
   // conversion the user started explicitly.
   optional bool live_conversion = 2000 [default = false];
 
+  // Nagi: what produced the text in the preedit. Clients show it in a small
+  // indicator next to the composition. Filled only when
+  // Config.use_conversion_status_indicator is true.
+  enum ConversionStatus {
+    CONVERSION_STATUS_NONE = 0;
+    // The reading as typed. Nothing has been converted yet.
+    CONVERSION_STATUS_READING = 1;
+    // Converted by the dictionary-based engine.
+    CONVERSION_STATUS_ENGINE = 2;
+    // Converted by the engine, and Zenz is still working on a correction.
+    CONVERSION_STATUS_ZENZ_PENDING = 3;
+    // Corrected by Zenz.
+    CONVERSION_STATUS_ZENZ = 4;
+  }
+  optional ConversionStatus conversion_status = 2001
+      [default = CONVERSION_STATUS_NONE];
+
   reserved 19;  // Deprecated storage_entry
   reserved 20;  // Deprecated cloud_sync_status
 

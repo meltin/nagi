@@ -297,6 +297,10 @@
         <translation>ライブ変換を始める最小の文字数:</translation>
     </message>
     <message>
+        <source>Show the conversion status next to the text</source>
+        <translation>変換の状態を入力中の文字の近くに表示する</translation>
+    </message>
+    <message>
         <location filename="config_dialog.ui" line="1083"/>
         <source>Secret mode</source>
         <translation>シークレットモード</translation>

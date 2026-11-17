@@ -566,6 +566,8 @@ void ConfigDialog::ConvertFromProto(const config::Config& config) {
   SET_CHECKBOX(dictionarySuggestCheckBox, use_dictionary_suggest);
   SET_CHECKBOX(realtimeConversionCheckBox, use_realtime_conversion);
   SET_CHECKBOX(liveConversionCheckBox, use_live_conversion);
+  SET_CHECKBOX(conversionStatusIndicatorCheckBox,
+               use_conversion_status_indicator);
   liveConversionDelaySpinBox->setValue(
       std::clamp<int>(config.live_conversion_delay_msec(), 0, 2000));
   liveConversionMinKeyLengthSpinBox->setValue(
@@ -664,6 +666,8 @@ void ConfigDialog::ConvertToProto(config::Config* config) const {
   GET_CHECKBOX(dictionarySuggestCheckBox, use_dictionary_suggest);
   GET_CHECKBOX(realtimeConversionCheckBox, use_realtime_conversion);
   GET_CHECKBOX(liveConversionCheckBox, use_live_conversion);
+  GET_CHECKBOX(conversionStatusIndicatorCheckBox,
+               use_conversion_status_indicator);
   config->set_live_conversion_delay_msec(
       static_cast<uint32_t>(liveConversionDelaySpinBox->value()));
   config->set_live_conversion_min_key_length(

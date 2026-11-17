@@ -373,6 +373,9 @@ message Config {
   // Live conversion starts when the reading has at least this many characters.
   optional uint32 live_conversion_min_key_length = 2002 [default = 2];
 
+  // Shows which engine produced the text next to the composition.
+  optional bool use_conversion_status_indicator = 2003 [default = false];
+
   //////////////////////////////////////////////////////////////
   //
   // Cloud (300-319)
