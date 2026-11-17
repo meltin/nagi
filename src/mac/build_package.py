@@ -62,7 +62,7 @@ def main():
   args = ParseArguments()
 
   if args.oss:
-    identifier = 'org.mozc.pkg.JapaneseInput'
+    identifier = 'org.nagi.pkg.JapaneseInput'
     pkg_name = 'Mozc.pkg'
   else:
     identifier = 'com.google.pkg.GoogleJapaneseInput'

@@ -1,4 +1,4 @@
 #!/bin/sh
 
-rm -Rf "/Applications/Mozc"
+rm -Rf "/Applications/Nagi"
 /usr/bin/true

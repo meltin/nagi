@@ -83,10 +83,10 @@ def main():
         }
   else:
     variables = {
-        'CF_BUNDLE_NAME_EN': 'Mozc',
-        'CF_BUNDLE_NAME_JA': 'Mozc',
+        'CF_BUNDLE_NAME_EN': 'Nagi',
+        'CF_BUNDLE_NAME_JA': 'Nagi',
         'NS_HUMAN_READABLE_COPYRIGHT': copyright_message,
-        'INPUT_MODE_ANNOTATION': 'Mozc',
+        'INPUT_MODE_ANNOTATION': 'Nagi',
         }
 
   codecs.open(options.output, 'w', encoding='utf-8').write(

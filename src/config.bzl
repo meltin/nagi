@@ -48,7 +48,10 @@ IBUS_MOZC_PATH = "/usr/lib/ibus-mozc/ibus-engine-mozc"
 EMACS_MOZC_CLIENT_DIR = "/usr/share/emacs/site-lisp/emacs-mozc"
 EMACS_MOZC_HELPER_DIR = "/usr/bin"
 
-MACOS_BUNDLE_ID_PREFIX = "org.mozc.inputmethod.Japanese"
+MACOS_BUNDLE_ID_PREFIX = "org.nagi.inputmethod.Japanese"
+
+# App bundle name on macOS. Kept apart from BRANDING, which selects build targets.
+MACOS_APP_NAME = "Nagi"
 MACOS_MIN_OS_VER = "12.0"
 
 # identity for codesign. The value passed to the --sign option of the codesign command.

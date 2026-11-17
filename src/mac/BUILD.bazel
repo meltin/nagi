@@ -39,7 +39,7 @@ load(
 )
 load(
     "//:config.bzl",
-    "BRANDING",
+    "MACOS_APP_NAME",
     "MACOS_BUNDLE_ID_PREFIX",
     "MACOS_CODESIGN_IDENTITY_INSTALLER_RELEASE",
     "MACOS_CODESIGN_IDENTITY_INSTALLER_TESTING",
@@ -102,7 +102,7 @@ mozc_macos_application(
     ),
     app_icons = ["//data/images/mac:product_icon.icns"],
     bundle_id = MACOS_BUNDLE_ID_PREFIX,
-    bundle_name = BRANDING,
+    bundle_name = MACOS_APP_NAME,
     infoplists = ["Info.plist"],
     resources = [
         "//data/images/mac:direct.tiff",
@@ -337,7 +337,7 @@ mozc_macos_application(
     bundle_name = "Uninstall" +
                   mozc_select(
                       default = "GoogleJapaneseInput",
-                      oss = "Mozc",
+                      oss = MACOS_APP_NAME,
                       prod = "GoogleJapaneseInput",
                   ),
     infoplists = ["Uninstaller/Info.plist"],
@@ -497,7 +497,7 @@ mozc_py_binary(
 genrule(
     name = "package",
     srcs = [":package_files"],
-    outs = ["Mozc.pkg"],
+    outs = ["Nagi.pkg"],
     cmd = "$(location :build_package) --input $(location :package_files)" +
           " --output $@" +
           ' --codesign_identity "' + CODESIGN_IDENTITY_INSTALLER_SELECT + '"' +

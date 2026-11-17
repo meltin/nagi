@@ -35,18 +35,18 @@
     <allowed-os-versions>
         <os-version min="12.0"/>
     </allowed-os-versions>
-    <pkg-ref id="org.mozc.pkg.JapaneseInput"/>
+    <pkg-ref id="org.nagi.pkg.JapaneseInput"/>
     <domains enable_localSystem="true"/>
     <options rootVolumeOnly="true"/>
     <options customize="never" require-scripts="false" hostArchitectures="x86_64,arm64"/>
     <choices-outline>
         <line choice="default">
-            <line choice="org.mozc.pkg.JapaneseInput"/>
+            <line choice="org.nagi.pkg.JapaneseInput"/>
         </line>
     </choices-outline>
     <choice id="default"/>
-    <choice id="org.mozc.pkg.JapaneseInput" visible="false">
-        <pkg-ref id="org.mozc.pkg.JapaneseInput"/>
+    <choice id="org.nagi.pkg.JapaneseInput" visible="false">
+        <pkg-ref id="org.nagi.pkg.JapaneseInput"/>
     </choice>
-    <pkg-ref id="org.mozc.pkg.JapaneseInput" version="0" onConclusion="RequireLogout">Mozc.pkg</pkg-ref>
+    <pkg-ref id="org.nagi.pkg.JapaneseInput" version="0" onConclusion="RequireLogout">Mozc.pkg</pkg-ref>
 </installer-gui-script>

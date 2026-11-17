@@ -51,7 +51,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: Mozc_arm64.pkg
-          path: src/bazel-bin/mac/Mozc.pkg
+          path: src/bazel-bin/mac/Nagi.pkg
           if-no-files-found: warn
 
   build_intel64:
@@ -92,7 +92,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: Mozc_intel64.pkg
-          path: src/bazel-bin/mac/Mozc.pkg
+          path: src/bazel-bin/mac/Nagi.pkg
           if-no-files-found: warn
 
   build_universal_binary:
@@ -133,7 +133,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: Mozc_universal_binary.pkg
-          path: src/bazel-bin/mac/Mozc.pkg
+          path: src/bazel-bin/mac/Nagi.pkg
           if-no-files-found: warn
 
   test:

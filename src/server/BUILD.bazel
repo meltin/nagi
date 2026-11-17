@@ -42,7 +42,7 @@ load(
 )
 load(
     "//:config.bzl",
-    "BRANDING",
+    "MACOS_APP_NAME",
     "MACOS_BUNDLE_ID_PREFIX",
 )
 
@@ -117,7 +117,7 @@ mozc_macos_application(
     name = "mozc_server_macos",
     app_icons = ["//data/images/mac:product_icon.icns"],
     bundle_id = MACOS_BUNDLE_ID_PREFIX + ".Converter",
-    bundle_name = BRANDING + "Converter",
+    bundle_name = MACOS_APP_NAME + "Converter",
     infoplists = ["Info.plist"],
     visibility = [
         "//mac:__pkg__",
