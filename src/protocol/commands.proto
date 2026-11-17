@@ -457,6 +457,11 @@ message SessionCommand {
     // client as a delayed callback. Ignored when |live_conversion_generation|
     // is stale.
     APPLY_LIVE_CONVERSION = 2000;
+
+    // Nagi: asks whether the Zenz correction of the live conversion preview is
+    // ready, and shows it when it is. Sent by the client as a delayed
+    // callback, repeatedly while the correction is pending.
+    APPLY_ZENZ_CORRECTION = 2001;
   }
   required CommandType type = 1;
 

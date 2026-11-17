@@ -74,6 +74,7 @@
 #include "testing/mozctest.h"
 #include "testing/test_peer.h"
 #include "transliteration/transliteration.h"
+#include "zenz/zenz_client.h"
 
 namespace mozc {
 
@@ -10753,6 +10754,272 @@ TEST_F(SessionTest, ConversionStatusIsOffByDefault) {
   commands::Command command;
   InsertCharacterChars("aiueo", &session, &command);
   EXPECT_FALSE(command.output().has_conversion_status());
+}
+
+// Zenz client whose answers are set by the test.
+class FakeZenzClient : public zenz::ZenzClientInterface {
+ public:
+  FakeZenzClient() { zenz::SetZenzClientForTesting(this); }
+  ~FakeZenzClient() override { zenz::SetZenzClientForTesting(nullptr); }
+
+  void Request(uint32_t id, std::string_view reading,
+               std::string_view left_context) override {
+    last_id_ = id;
+    last_reading_ = std::string(reading);
+    ++request_count_;
+    result_.state = zenz::ZenzResult::PENDING;
+    result_.text.clear();
+  }
+  zenz::ZenzResult Take(uint32_t id) override {
+    return id == last_id_ ? result_ : zenz::ZenzResult();
+  }
+  void Cancel() override { ++cancel_count_; }
+  void WarmUp() override { ++warm_up_count_; }
+
+  void Answer(std::string text) {
+    result_.state = zenz::ZenzResult::READY;
+    result_.text = std::move(text);
+  }
+
+  uint32_t last_id_ = 0;
+  std::string last_reading_;
+  int request_count_ = 0;
+  int cancel_count_ = 0;
+  int warm_up_count_ = 0;
+  zenz::ZenzResult result_;
+};
+
+class ZenzSessionTest : public SessionTest {
+ protected:
+  // Types "aiueo" and applies the live conversion, whose engine result is
+  // "愛上尾". Returns the output of the applied preview.
+  commands::Command TypeAndApplyLiveConversion(Session* session) {
+    commands::Command command;
+    InsertCharacterChars("aiueo", session, &command);
+    return SendCallback(command, session);
+  }
+
+  // Sends the callback |previous| asked for, as the client does after the
+  // delay.
+  commands::Command SendCallback(const commands::Command& previous,
+                                 Session* session) {
+    commands::Command command;
+    EXPECT_TRUE(previous.output().has_callback());
+    *command.mutable_input()->mutable_command() =
+        previous.output().callback().session_command();
+    EXPECT_TRUE(session->SendCommand(&command));
+    return command;
+  }
+
+  void SetUpEngine(MockEngine* engine) {
+    converter_ = CreateEngineConverterMock(engine);
+    Segments segments;
+    SetAiueo(&segments);
+    segments.mutable_segment(0)->mutable_candidate(0)->value = "愛上尾";
+    ConversionRequest default_request;
+    FillT13Ns(default_request, &segments);
+    EXPECT_CALL(*converter_, StartConversion(_, _))
+        .WillRepeatedly(DoAll(SetArgPointee<1>(segments), Return(true)));
+  }
+
+  static config::Config ZenzConfig() {
+    config::Config config;
+    config.set_use_live_conversion(true);
+    config.set_use_zenz_correction(true);
+    config.set_use_conversion_status_indicator(true);
+    return config;
+  }
+
+  std::shared_ptr<MockConverter> converter_;
+};
+
+TEST_F(ZenzSessionTest, CorrectionReplacesThePreview) {
+  FakeZenzClient zenz_client;
+  MockEngine engine;
+  SetUpEngine(&engine);
+  Session session(engine);
+  session.SetConfig(ZenzConfig());
+  InitSessionToPrecomposition(&session);
+
+  // The engine's conversion is shown at once, and Zenz is asked.
+  commands::Command command = TypeAndApplyLiveConversion(&session);
+  // Typing got the model ready before the first request.
+  EXPECT_GT(zenz_client.warm_up_count_, 0);
+  EXPECT_PREEDIT("愛上尾", command);
+  EXPECT_EQ(command.output().conversion_status(),
+            commands::Output::CONVERSION_STATUS_ZENZ_PENDING);
+  EXPECT_EQ(zenz_client.request_count_, 1);
+  EXPECT_EQ(zenz_client.last_reading_, "あいうえお");
+  ASSERT_TRUE(command.output().has_callback());
+  EXPECT_EQ(command.output().callback().session_command().type(),
+            commands::SessionCommand::APPLY_ZENZ_CORRECTION);
+  EXPECT_GT(command.output().callback().delay_millisec(), 0);
+
+  // No answer yet: the preview stays and the client is asked to come back.
+  command = SendCallback(command, &session);
+  EXPECT_PREEDIT("愛上尾", command);
+  EXPECT_EQ(command.output().conversion_status(),
+            commands::Output::CONVERSION_STATUS_ZENZ_PENDING);
+  ASSERT_TRUE(command.output().has_callback());
+
+  // The answer replaces the preview and the polling stops.
+  zenz_client.Answer("アイウエオ");
+  command = SendCallback(command, &session);
+  EXPECT_PREEDIT("アイウエオ", command);
+  EXPECT_TRUE(command.output().live_conversion());
+  EXPECT_EQ(command.output().conversion_status(),
+            commands::Output::CONVERSION_STATUS_ZENZ);
+  EXPECT_FALSE(command.output().has_callback());
+  EXPECT_EQ(command.output().preedit().cursor(), 5);
+
+  // Enter commits what is shown.
+  command.Clear();
+  SendKey("Enter", &session, &command);
+  EXPECT_RESULT_AND_KEY("アイウエオ", "あいうえお", command);
+  EXPECT_FALSE(command.output().has_preedit());
+}
+
+TEST_F(ZenzSessionTest, RejectedAnswerKeepsTheEngineConversion) {
+  FakeZenzClient zenz_client;
+  MockEngine engine;
+  SetUpEngine(&engine);
+  Session session(engine);
+  session.SetConfig(ZenzConfig());
+  InitSessionToPrecomposition(&session);
+
+  commands::Command command = TypeAndApplyLiveConversion(&session);
+  // "でした" is not in the reading.
+  zenz_client.Answer("愛上尾でした");
+  command = SendCallback(command, &session);
+  EXPECT_PREEDIT("愛上尾", command);
+  EXPECT_EQ(command.output().conversion_status(),
+            commands::Output::CONVERSION_STATUS_ENGINE);
+  EXPECT_FALSE(command.output().has_callback());
+}
+
+TEST_F(ZenzSessionTest, AgreementKeepsTheEngineConversion) {
+  FakeZenzClient zenz_client;
+  MockEngine engine;
+  SetUpEngine(&engine);
+  Session session(engine);
+  session.SetConfig(ZenzConfig());
+  InitSessionToPrecomposition(&session);
+
+  commands::Command command = TypeAndApplyLiveConversion(&session);
+  zenz_client.Answer("愛上尾");
+  command = SendCallback(command, &session);
+  EXPECT_PREEDIT("愛上尾", command);
+  EXPECT_EQ(command.output().conversion_status(),
+            commands::Output::CONVERSION_STATUS_ZENZ);
+  // The engine still owns the conversion, so it keeps its own segments.
+  EXPECT_FALSE(command.output().preedit().segment(0).key().empty());
+}
+
+TEST_F(ZenzSessionTest, TypingAbandonsThePendingCorrection) {
+  FakeZenzClient zenz_client;
+  MockEngine engine;
+  SetUpEngine(&engine);
+  Session session(engine);
+  session.SetConfig(ZenzConfig());
+  InitSessionToPrecomposition(&session);
+
+  const commands::Command applied = TypeAndApplyLiveConversion(&session);
+  commands::Command command;
+  InsertCharacterChars("a", &session, &command);
+  EXPECT_EQ(zenz_client.cancel_count_, 1);
+  EXPECT_PREEDIT("あいうえおあ", command);
+
+  // An answer that arrives for the old reading is never shown.
+  zenz_client.Answer("アイウエオ");
+  command = SendCallback(applied, &session);
+  EXPECT_PREEDIT("あいうえおあ", command);
+  EXPECT_FALSE(command.output().live_conversion());
+}
+
+TEST_F(ZenzSessionTest, SpaceGoesBackToTheEngineConversion) {
+  FakeZenzClient zenz_client;
+  MockEngine engine;
+  SetUpEngine(&engine);
+  Session session(engine);
+  session.SetConfig(ZenzConfig());
+  InitSessionToPrecomposition(&session);
+
+  commands::Command command = TypeAndApplyLiveConversion(&session);
+  zenz_client.Answer("アイウエオ");
+  command = SendCallback(command, &session);
+  EXPECT_PREEDIT("アイウエオ", command);
+
+  command.Clear();
+  SendKey("Space", &session, &command);
+  EXPECT_FALSE(command.output().live_conversion());
+  EXPECT_EQ(command.output().conversion_status(),
+            commands::Output::CONVERSION_STATUS_ENGINE);
+  // The Zenz text is gone: the candidates are the engine's.
+  EXPECT_NE(GetComposition(command), "");
+  for (const commands::Preedit::Segment& segment :
+       command.output().preedit().segment()) {
+    EXPECT_FALSE(segment.key().empty());
+  }
+}
+
+TEST_F(ZenzSessionTest, WaitsForTheConfiguredDelay) {
+  FakeZenzClient zenz_client;
+  MockEngine engine;
+  SetUpEngine(&engine);
+  config::Config config = ZenzConfig();
+  config.set_zenz_delay_msec(50);
+  Session session(engine);
+  session.SetConfig(config);
+  InitSessionToPrecomposition(&session);
+
+  commands::Command command = TypeAndApplyLiveConversion(&session);
+  EXPECT_EQ(zenz_client.request_count_, 0);
+  ASSERT_TRUE(command.output().has_callback());
+  EXPECT_EQ(command.output().callback().delay_millisec(), 50);
+  EXPECT_EQ(command.output().conversion_status(),
+            commands::Output::CONVERSION_STATUS_ZENZ_PENDING);
+
+  command = SendCallback(command, &session);
+  EXPECT_EQ(zenz_client.request_count_, 1);
+  ASSERT_TRUE(command.output().has_callback());
+}
+
+TEST_F(ZenzSessionTest, GivesUpWhenNoAnswerComes) {
+  FakeZenzClient zenz_client;
+  MockEngine engine;
+  SetUpEngine(&engine);
+  Session session(engine);
+  session.SetConfig(ZenzConfig());
+  InitSessionToPrecomposition(&session);
+
+  commands::Command command = TypeAndApplyLiveConversion(&session);
+  int polls = 0;
+  while (command.output().has_callback() && polls < 1000) {
+    command = SendCallback(command, &session);
+    ++polls;
+  }
+  EXPECT_LT(polls, 1000);
+  EXPECT_EQ(zenz_client.cancel_count_, 1);
+  EXPECT_PREEDIT("愛上尾", command);
+  EXPECT_EQ(command.output().conversion_status(),
+            commands::Output::CONVERSION_STATUS_ENGINE);
+}
+
+TEST_F(ZenzSessionTest, NotAskedWhenTurnedOff) {
+  FakeZenzClient zenz_client;
+  MockEngine engine;
+  SetUpEngine(&engine);
+  config::Config config = ZenzConfig();
+  config.set_use_zenz_correction(false);
+  Session session(engine);
+  session.SetConfig(config);
+  InitSessionToPrecomposition(&session);
+
+  const commands::Command command = TypeAndApplyLiveConversion(&session);
+  EXPECT_EQ(zenz_client.request_count_, 0);
+  EXPECT_FALSE(command.output().has_callback());
+  EXPECT_EQ(command.output().conversion_status(),
+            commands::Output::CONVERSION_STATUS_ENGINE);
 }
 
 }  // namespace session

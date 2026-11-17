@@ -1,0 +1,55 @@
+# Copyright 2026 The Nagi Authors.
+# Use of this source code is governed by the BSD 3-Clause license in LICENSE.
+
+# Zenz neural kana-kanji conversion, used by the session to correct the live
+# conversion preview.
+
+load(
+    "//:build_defs.bzl",
+    "mozc_cc_binary",
+    "mozc_cc_library",
+    "mozc_cc_test",
+)
+
+package(default_visibility = ["//:__subpackages__"])
+
+mozc_cc_library(
+    name = "zenz_client",
+    srcs = ["zenz_client.cc"] + select({
+        "@platforms//os:macos": ["llama_server_zenz_client.cc"],
+        "//conditions:default": ["null_zenz_client.cc"],
+    }),
+    hdrs = ["zenz_client.h"],
+    deps = [
+        "//base:file_util",
+        "//base:system_util",
+        "//base/strings:japanese",
+        "//base/strings:unicode",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+mozc_cc_test(
+    name = "zenz_client_test",
+    size = "small",
+    srcs = ["zenz_client_test.cc"],
+    deps = [
+        ":zenz_client",
+        "//testing:gunit_main",
+    ],
+)
+
+# Converts readings given on the command line with the installed runtime.
+#   bazelisk run //zenz:zenz_client_main -- きょうはいいてんきです
+mozc_cc_binary(
+    name = "zenz_client_main",
+    srcs = ["zenz_client_main.cc"],
+    deps = [
+        ":zenz_client",
+        "//base:init_mozc",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/time",
+    ],
+)

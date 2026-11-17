@@ -301,6 +301,14 @@
         <translation>変換の状態を入力中の文字の近くに表示する</translation>
     </message>
     <message>
+        <source>Correct live conversion with Zenz (runs on this Mac)</source>
+        <translation>ライブ変換を Zenz で補正する(この Mac の中で動作)</translation>
+    </message>
+    <message>
+        <source>Wait before asking Zenz (milliseconds):</source>
+        <translation>Zenz に問い合わせるまでの待ち時間(ミリ秒):</translation>
+    </message>
+    <message>
         <location filename="config_dialog.ui" line="1083"/>
         <source>Secret mode</source>
         <translation>シークレットモード</translation>

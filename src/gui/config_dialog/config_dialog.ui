@@ -984,6 +984,23 @@
               </property>
              </widget>
             </item>
+            <item row="7" column="0" colspan="3">
+             <widget class="QCheckBox" name="zenzCorrectionCheckBox">
+              <property name="text">
+               <string>Correct live conversion with Zenz (runs on this Mac)</string>
+              </property>
+             </widget>
+            </item>
+            <item row="8" column="0" colspan="2">
+             <widget class="QLabel" name="zenzDelayLabel">
+              <property name="text">
+               <string>Wait before asking Zenz (milliseconds):</string>
+              </property>
+             </widget>
+            </item>
+            <item row="8" column="2">
+             <widget class="QSpinBox" name="zenzDelaySpinBox"/>
+            </item>
            </layout>
           </widget>
          </item>

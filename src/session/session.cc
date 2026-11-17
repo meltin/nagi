@@ -31,6 +31,8 @@
 
 #include "session/session.h"
 
+#include <algorithm>
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -45,6 +47,7 @@
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "base/clock.h"
+#include "base/strings/unicode.h"
 #include "base/port.h"
 #include "base/util.h"
 #include "composer/composer.h"
@@ -58,6 +61,7 @@
 #include "session/key_event_transformer.h"
 #include "session/keymap.h"
 #include "transliteration/transliteration.h"
+#include "zenz/zenz_client.h"
 
 #ifdef __APPLE__
 #include <TargetConditionals.h>  // for TARGET_OS_IPHONE
@@ -72,6 +76,11 @@ using ::mozc::engine::EngineConverterInterface;
 
 // Maximum size of multiple undo stack.
 const size_t kMultipleUndoMaxSize = 10;
+
+// How often the client asks whether the Zenz correction is ready, and how
+// many times before giving up (about three seconds).
+constexpr uint32_t kZenzPollIntervalMsec = 30;
+constexpr uint32_t kZenzMaxPollCount = 100;
 
 // Set input mode if the current input mode is not the given mode.
 void SwitchInputMode(const transliteration::TransliterationType mode,
@@ -390,6 +399,9 @@ bool Session::SendCommand(commands::Command* command) {
     case commands::SessionCommand::APPLY_LIVE_CONVERSION:
       result = ApplyLiveConversion(command);
       break;
+    case commands::SessionCommand::APPLY_ZENZ_CORRECTION:
+      result = ApplyZenzCorrection(command);
+      break;
     case commands::SessionCommand::REQUEST_NWP: {
       ConversionPreferences conversion_preferences =
           context_->converter().conversion_preferences();
@@ -412,7 +424,7 @@ bool Session::SendCommand(commands::Command* command) {
       break;
   }
   if (context_->state() != ImeContext::CONVERSION) {
-    live_conversion_active_ = false;
+    EndLiveConversion();
   }
   MaybeSetUndoStatus(command);
   return result;
@@ -550,7 +562,7 @@ bool Session::SendKey(commands::Command* command) {
   }
 
   if (context_->state() != ImeContext::CONVERSION) {
-    live_conversion_active_ = false;
+    EndLiveConversion();
   }
   if (result) {
     MaybeScheduleLiveConversion(command);
@@ -567,7 +579,16 @@ bool Session::IsLiveConversion() const {
 void Session::LeaveLiveConversion() {
   context_->mutable_converter()->Cancel();
   SetSessionState(ImeContext::COMPOSITION, context_.get());
+  EndLiveConversion();
+}
+
+void Session::EndLiveConversion() {
   live_conversion_active_ = false;
+  if (zenz_state_ == kZenzRequested) {
+    zenz::GetZenzClient()->Cancel();
+  }
+  zenz_state_ = kZenzOff;
+  zenz_preview_.clear();
 }
 
 bool Session::SendKeyLiveConversionState(commands::Command* command) {
@@ -597,14 +618,21 @@ bool Session::SendKeyLiveConversionState(commands::Command* command) {
       return InsertCharacter(command);
     case keymap::ConversionState::CANCEL:
       // Back to kana. Do not convert the same reading again by itself.
-      live_conversion_active_ = false;
+      EndLiveConversion();
       live_conversion_cancelled_key_ =
           context_->composer().GetQueryForConversion();
       return ConvertCancel(command);
+    case keymap::ConversionState::COMMIT:
+      if (!zenz_preview_.empty()) {
+        return CommitZenzPreview(command);
+      }
+      EndLiveConversion();
+      return SendKeyConversionState(command);
     default:
-      // Commit, next candidate, segment operations and so on. From here the
-      // user is driving an ordinary conversion, which must not be rewritten.
-      live_conversion_active_ = false;
+      // Next candidate, segment operations and so on. From here the user is
+      // driving an ordinary conversion by the engine, which must not be
+      // rewritten. This is also the way back from a Zenz correction.
+      EndLiveConversion();
       return SendKeyConversionState(command);
   }
 }
@@ -635,6 +663,10 @@ void Session::MaybeScheduleLiveConversion(commands::Command* command) {
     }
     live_conversion_cancelled_key_.clear();
   }
+  if (config.use_zenz_correction()) {
+    // Load the model while the user is still typing the first words.
+    zenz::GetZenzClient()->WarmUp();
+  }
   commands::Output::Callback* callback =
       command->mutable_output()->mutable_callback();
   callback->set_delay_millisec(config.live_conversion_delay_msec());
@@ -659,13 +691,32 @@ bool Session::ApplyLiveConversion(commands::Command* command) {
     }
     return true;
   }
+  // Read the reading before the state changes: it is what Zenz converts.
+  const std::string reading = context_->composer().GetQueryForConversion();
   if (!context_->mutable_converter()->Convert(context_->composer(),
                                               context_->client_context())) {
     OutputComposition(command);
     return true;
   }
   SetSessionState(ImeContext::CONVERSION, context_.get());
+  EndLiveConversion();
   live_conversion_active_ = true;
+  live_conversion_reading_ = reading;
+  live_conversion_engine_text_.clear();
+
+  if (context_->GetConfig().use_zenz_correction() &&
+      zenz::IsZenzReading(reading)) {
+    if (context_->GetConfig().zenz_delay_msec() == 0) {
+      StartZenzCorrection();
+    } else {
+      zenz_state_ = kZenzWaiting;
+    }
+  }
+  OutputLivePreview(command);
+  return true;
+}
+
+void Session::OutputLivePreview(commands::Command* command) {
   Output(command);
 
   // Show a preview, not a conversion with a focused segment.
@@ -673,14 +724,111 @@ bool Session::ApplyLiveConversion(commands::Command* command) {
   output->set_live_conversion(true);
   if (output->has_preedit()) {
     commands::Preedit* preedit = output->mutable_preedit();
+    std::string engine_text;
     uint32_t length = 0;
     for (commands::Preedit::Segment& segment : *preedit->mutable_segment()) {
       segment.set_annotation(commands::Preedit::Segment::UNDERLINE);
       length += segment.value_length();
+      engine_text += segment.value();
+    }
+    live_conversion_engine_text_ = std::move(engine_text);
+    if (!zenz_preview_.empty()) {
+      preedit->clear_segment();
+      commands::Preedit::Segment* segment = preedit->add_segment();
+      segment->set_annotation(commands::Preedit::Segment::UNDERLINE);
+      segment->set_value(zenz_preview_);
+      segment->set_key(live_conversion_reading_);
+      length = strings::CharsLen(zenz_preview_);
+      segment->set_value_length(length);
     }
     preedit->set_cursor(length);
     preedit->clear_highlighted_position();
   }
+
+  const bool zenz_in_progress =
+      zenz_state_ == kZenzWaiting || zenz_state_ == kZenzRequested;
+  if (context_->GetConfig().use_conversion_status_indicator()) {
+    if (zenz_in_progress) {
+      output->set_conversion_status(
+          commands::Output::CONVERSION_STATUS_ZENZ_PENDING);
+    } else if (zenz_state_ == kZenzApplied) {
+      output->set_conversion_status(commands::Output::CONVERSION_STATUS_ZENZ);
+    }
+  }
+  if (zenz_in_progress) {
+    commands::Output::Callback* callback = output->mutable_callback();
+    callback->set_delay_millisec(
+        zenz_state_ == kZenzWaiting
+            ? std::max<uint32_t>(1, context_->GetConfig().zenz_delay_msec())
+            : kZenzPollIntervalMsec);
+    commands::SessionCommand* session_command =
+        callback->mutable_session_command();
+    session_command->set_type(commands::SessionCommand::APPLY_ZENZ_CORRECTION);
+    session_command->set_live_conversion_generation(
+        live_conversion_generation_);
+  }
+}
+
+void Session::StartZenzCorrection() {
+  // Unique across sessions, because they share one Zenz client.
+  static std::atomic<uint32_t> next_request_id{1};
+  zenz_request_id_ = next_request_id.fetch_add(1);
+  zenz_poll_count_ = 0;
+  zenz_state_ = kZenzRequested;
+  zenz::GetZenzClient()->Request(zenz_request_id_, live_conversion_reading_,
+                                 context_->client_context().preceding_text());
+}
+
+bool Session::ApplyZenzCorrection(commands::Command* command) {
+  command->mutable_output()->set_consumed(true);
+  if (!IsLiveConversion()) {
+    // The preview is gone. Report the current state unchanged.
+    if (context_->state() == ImeContext::COMPOSITION &&
+        !context_->converter().IsActive()) {
+      OutputComposition(command);
+    } else {
+      OutputFromState(command);
+    }
+    return true;
+  }
+  if (command->input().command().live_conversion_generation() ==
+      live_conversion_generation_) {
+    if (zenz_state_ == kZenzWaiting) {
+      StartZenzCorrection();
+    } else if (zenz_state_ == kZenzRequested) {
+      zenz::ZenzResult result =
+          zenz::GetZenzClient()->Take(zenz_request_id_);
+      if (result.state == zenz::ZenzResult::PENDING) {
+        if (++zenz_poll_count_ >= kZenzMaxPollCount) {
+          zenz::GetZenzClient()->Cancel();
+          zenz_state_ = kZenzDone;
+        }
+      } else if (result.state == zenz::ZenzResult::READY &&
+                 zenz::IsAcceptableZenzOutput(live_conversion_reading_,
+                                              result.text)) {
+        zenz_state_ = kZenzApplied;
+        // When Zenz agrees with the engine, keep the engine's conversion so
+        // that committing it goes through the engine and is learned.
+        if (result.text != live_conversion_engine_text_) {
+          zenz_preview_ = std::move(result.text);
+        }
+      } else {
+        zenz_state_ = kZenzDone;
+      }
+    }
+  }
+  OutputLivePreview(command);
+  return true;
+}
+
+bool Session::CommitZenzPreview(commands::Command* command) {
+  const std::string reading = live_conversion_reading_;
+  const std::string text = zenz_preview_;
+  EndLiveConversion();
+  PushUndoContext();
+  // shortcut: the engine does not learn text it did not produce. Feed Zenz
+  // commits to the user history when that starts to matter.
+  CommitStringDirectly(reading, text, command);
   return true;
 }
 

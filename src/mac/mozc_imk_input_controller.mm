@@ -746,6 +746,8 @@ bool CanSurroundingText(absl::string_view bundle_id) {
     return;
   }
 
+  NSAttributedString *previousString = [composedString_ copy];
+  const int previousCursorPosition = cursorPosition_;
   [composedString_ deleteCharactersInRange:NSMakeRange(0, [composedString_ length])];
   cursorPosition_ = -1;
   if (preedit != nullptr) {
@@ -767,6 +769,13 @@ bool CanSurroundingText(absl::string_view bundle_id) {
   if ([composedString_ length] == 0) {
     [originalString_ setString:@""];
     replacementRange_ = NSMakeRange(NSNotFound, 0);
+  }
+
+  // The server answers the same composition repeatedly while it waits for a
+  // Zenz correction. Do not make the client redraw text that did not change.
+  if ([composedString_ length] > 0 && cursorPosition_ == previousCursorPosition &&
+      [composedString_ isEqualToAttributedString:previousString]) {
+    return;
   }
 
   // Update the composed string of the client applications.

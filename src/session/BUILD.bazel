@@ -58,6 +58,7 @@ mozc_cc_library(
         "//base:clock",
         "//base:port",
         "//base:util",
+        "//base/strings:unicode",
         "//composer",
         "//composer:key_event_util",
         "//composer:table",
@@ -66,6 +67,7 @@ mozc_cc_library(
         "//protocol:commands_cc_proto",
         "//protocol:config_cc_proto",
         "//transliteration",
+        "//zenz:zenz_client",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
@@ -110,6 +112,7 @@ mozc_cc_test(
         "//testing:mozctest",
         "//testing:test_peer",
         "//transliteration",
+        "//zenz:zenz_client",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
@@ -493,6 +496,28 @@ mozc_cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+# Types romaji through a real session to check live conversion and Zenz.
+#   bazelisk run //session:nagi_typing_main -- kyouhaiitenkidesu
+mozc_cc_binary(
+    name = "nagi_typing_main",
+    testonly = 1,
+    srcs = ["nagi_typing_main.cc"],
+    deps = [
+        ":session_handler",
+        "//base:file_util",
+        "//base:init_mozc",
+        "//base:system_util",
+        "//config:config_handler",
+        "//data_manager/oss:oss_data_manager",
+        "//engine",
+        "//protocol:commands_cc_proto",
+        "//protocol:config_cc_proto",
+        "//zenz:zenz_client",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/time",
     ],
 )
 

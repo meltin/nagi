@@ -288,6 +288,24 @@ class Session {
   // scheduled again until the reading changes.
   std::string live_conversion_cancelled_key_;
 
+  // Nagi Zenz correction of the live conversion preview.
+  enum ZenzState {
+    kZenzOff,        // Not used for this preview.
+    kZenzWaiting,    // Waiting for the configured delay before asking.
+    kZenzRequested,  // Asked, no answer yet.
+    kZenzApplied,    // Answered, and the answer was accepted.
+    kZenzDone,       // Failed, timed out or rejected.
+  };
+  ZenzState zenz_state_ = kZenzOff;
+  uint32_t zenz_request_id_ = 0;
+  uint32_t zenz_poll_count_ = 0;
+  // Reading and engine conversion of the current preview.
+  std::string live_conversion_reading_;
+  std::string live_conversion_engine_text_;
+  // Zenz correction shown instead of the engine conversion. Empty when Zenz
+  // agrees with the engine or has no accepted answer.
+  std::string zenz_preview_;
+
   std::unique_ptr<ImeContext> CreateContext(
       const EngineInterface& engine) const;
 
@@ -386,6 +404,17 @@ class Session {
   bool ApplyLiveConversion(mozc::commands::Command* command);
   // Returns to COMPOSITION from a live conversion without touching the output.
   void LeaveLiveConversion();
+  // Forgets the live conversion preview and its Zenz correction.
+  void EndLiveConversion();
+  // Fills the output with the preview: the engine's conversion, or the Zenz
+  // correction once it has been accepted.
+  void OutputLivePreview(mozc::commands::Command* command);
+  // Sends the reading of the preview to Zenz.
+  void StartZenzCorrection();
+  // Handles APPLY_ZENZ_CORRECTION.
+  bool ApplyZenzCorrection(mozc::commands::Command* command);
+  // Commits the Zenz correction shown as the preview.
+  bool CommitZenzPreview(mozc::commands::Command* command);
 
   bool MoveCursorToEndInternal(mozc::commands::Command* command,
                                bool clear_undo);

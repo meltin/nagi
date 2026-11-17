@@ -376,6 +376,13 @@ message Config {
   // Shows which engine produced the text next to the composition.
   optional bool use_conversion_status_indicator = 2003 [default = false];
 
+  // Corrects the live conversion preview with the Zenz neural model, which
+  // runs on this machine.
+  optional bool use_zenz_correction = 2004 [default = false];
+
+  // How long to wait after the preview appears before asking Zenz.
+  optional uint32 zenz_delay_msec = 2005 [default = 0];
+
   //////////////////////////////////////////////////////////////
   //
   // Cloud (300-319)
