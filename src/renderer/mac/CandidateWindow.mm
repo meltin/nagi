@@ -56,6 +56,9 @@ void CandidateWindow::SetSendCommandInterface(
 
 void CandidateWindow::InitWindow() {
   RendererBaseWindow::InitWindow();
+  // The view draws a rounded shape; the rest of the window shows through.
+  [window_ setOpaque:NO];
+  [window_ setBackgroundColor:NSColor.clearColor];
   const CandidateView* candidate_view = (CandidateView*)view_;
   [candidate_view setSendCommandInterface:command_sender_];
 }

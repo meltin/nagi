@@ -33,6 +33,7 @@ load(
     "mozc_cc_test",
     "mozc_macos_application",
     "mozc_objc_library",
+    "mozc_objc_test",
     "mozc_select",
 )
 load(
@@ -368,5 +369,16 @@ mozc_cc_library(
         "//base:init_mozc",
         "//base:run_level",
         "//base:system_util",
+    ],
+)
+
+mozc_objc_test(
+    name = "candidate_view_test",
+    size = "small",
+    srcs = ["mac/candidate_view_test.mm"],
+    deps = [
+        ":mozc_renderer_lib_macos",
+        "//protocol:candidate_window_cc_proto",
+        "//testing:gunit_main_objc",
     ],
 )

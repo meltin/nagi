@@ -57,6 +57,17 @@ using mozc::renderer::kNumberOfColumns;
 using mozc::renderer::TableLayout;
 using mozc::renderer::mac::MacViewUtil;
 
+namespace {
+// Nagi: the window is drawn with rounded corners.
+constexpr CGFloat kWindowCornerRadius = 6;
+
+// Nagi: the hint under the suggestions says only how to pick one ("Press Tab to select").
+// Without it, a single suggestion is a small bubble next to the composition.
+bool HasVisibleFooterLabel(const mozc::commands::Footer &footer) {
+  return footer.has_label() && footer.label() != "Tabキーで選択";
+}
+}  // namespace
+
 // Those constants and most rendering logic is as same as Windows
 // native candidate window.
 // TODO(mukai): integrate and share the code among Win and Mac.
@@ -180,7 +191,7 @@ using mozc::renderer::mac::MacViewUtil;
 
     const mozc::commands::Footer &footer = candidate_window_.footer();
 
-    if (footer.has_label()) {
+    if (HasVisibleFooterLabel(footer)) {
       const NSAttributedString *footerLabel =
           MacViewUtil::ToNSAttributedString(footer.label(), style_.footer_style());
       const NSSize footerLabelSize =
@@ -217,8 +228,11 @@ using mozc::renderer::mac::MacViewUtil;
       footerSize.height = std::max(footerSize.height, footerIndexSize.height);
     }
 
-    footerSize.height += style_.footer_border_colors_size();
-    tableLayout_.EnsureFooterSize(MacViewUtil::ToSize(footerSize));
+    // A footer with nothing to show takes no room.
+    if (footerSize.height > 0) {
+      footerSize.height += style_.footer_border_colors_size();
+      tableLayout_.EnsureFooterSize(MacViewUtil::ToSize(footerSize));
+    }
   }
 
   tableLayout_.SetRowRectPadding(style_.row_rect_padding());
@@ -283,6 +297,20 @@ using mozc::renderer::mac::MacViewUtil;
     return;
   }
 
+  // The window is transparent, so the corners outside the rounded shape must be cleared.
+  NSRectFillUsingOperation(self.bounds, NSCompositingOperationClear);
+  const NSRect pathBounds = NSInsetRect(self.bounds, 0.5, 0.5);
+  const CGFloat radius =
+      std::min<CGFloat>(kWindowCornerRadius, std::min(NSWidth(pathBounds), NSHeight(pathBounds)) / 2);
+  NSBezierPath *windowPath = [NSBezierPath bezierPathWithRoundedRect:pathBounds
+                                                             xRadius:radius
+                                                             yRadius:radius];
+  [NSGraphicsContext saveGraphicsState];
+  [windowPath addClip];
+  // Rows do not cover the gaps between columns.
+  [NSColor.whiteColor set];
+  [NSBezierPath fillRect:self.bounds];
+
   for (int i = 0; i < candidate_window_.candidate_size(); ++i) {
     [self drawRow:i];
   }
@@ -291,11 +319,13 @@ using mozc::renderer::mac::MacViewUtil;
     [self drawVScrollBar];
   }
   [self drawFooter];
+  [NSGraphicsContext restoreGraphicsState];
 
   // Draw the window border at last
-  [MacViewUtil::ToNSColor(style_.border_color()) set];
-  const mozc::Size windowSize = tableLayout_.GetTotalSize();
-  [NSBezierPath strokeRect:NSMakeRect(0.5, 0.5, windowSize.width - 1, windowSize.height - 1)];
+  [MacViewUtil::ToNSColor(style_.border_color()) setStroke];
+  [windowPath stroke];
+  // The system shadow follows the drawn shape.
+  [self.window invalidateShadow];
 }
 
 #pragma mark drawing aux methods
@@ -369,6 +399,9 @@ using mozc::renderer::mac::MacViewUtil;
   }
   const mozc::commands::Footer &footer = candidate_window_.footer();
   NSRect footerRect = MacViewUtil::ToNSRect(tableLayout_.GetFooterRect());
+  if (footerRect.size.height <= 0) {
+    return;
+  }
 
   // Draw footer border
   for (int i = 0; i < style_.footer_border_colors_size(); ++i) {
@@ -402,7 +435,7 @@ using mozc::renderer::mac::MacViewUtil;
   }
 
   // Draw label
-  if (footer.has_label()) {
+  if (HasVisibleFooterLabel(footer)) {
     const NSAttributedString *footerLabel =
         MacViewUtil::ToNSAttributedString(footer.label(), style_.footer_style());
     footerRect.origin.x += style_.footer_style().left_padding();
