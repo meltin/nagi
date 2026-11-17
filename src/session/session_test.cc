@@ -10593,11 +10593,13 @@ TEST_F(SessionTest, MultiSegmentSubmitCandidate) {
   EXPECT_EQ(command.output().result().value(), "脱ぐ");
 }
 
-TEST_F(SessionTest, LiveConversionIsOffByDefault) {
+// The product default turns it on (config_handler.cc). The proto default is off.
+TEST_F(SessionTest, LiveConversionIsOffInABareConfig) {
   MockEngine engine;
   std::shared_ptr<MockConverter> converter = CreateEngineConverterMock(&engine);
 
   Session session(engine);
+  session.SetConfig(config::Config());
   InitSessionToPrecomposition(&session);
   commands::Command command;
   InsertCharacterChars("aiueo", &session, &command);
@@ -10746,11 +10748,13 @@ TEST_F(SessionTest, ConversionStatusFollowsTheState) {
             commands::Output::CONVERSION_STATUS_NONE);
 }
 
-TEST_F(SessionTest, ConversionStatusIsOffByDefault) {
+// The product default turns it on (config_handler.cc). The proto default is off.
+TEST_F(SessionTest, ConversionStatusIsOffInABareConfig) {
   MockEngine engine;
   std::shared_ptr<MockConverter> converter = CreateEngineConverterMock(&engine);
 
   Session session(engine);
+  session.SetConfig(config::Config());
   InitSessionToPrecomposition(&session);
   commands::Command command;
   InsertCharacterChars("aiueo", &session, &command);
@@ -10846,6 +10850,8 @@ class ZenzSessionTest : public SessionTest {
     config.set_use_live_conversion(true);
     config.set_use_zenz_correction(true);
     config.set_use_conversion_status_indicator(true);
+    // Ask at once. The wait has its own test.
+    config.set_zenz_delay_msec(0);
     return config;
   }
 

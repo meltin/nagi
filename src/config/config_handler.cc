@@ -80,6 +80,21 @@ bool GetPlatformSpecificDefaultEmojiSetting() {
   return use_emoji_conversion_default;
 }
 
+// Nagi: live conversion, the status indicator and Zenz are on unless the user
+// turned them off. The proto defaults stay off, so code that builds a bare
+// Config (most tests) keeps the upstream behavior.
+void ApplyNagiDefaults(Config* config) {
+  if (!config->has_use_live_conversion()) {
+    config->set_use_live_conversion(true);
+  }
+  if (!config->has_use_conversion_status_indicator()) {
+    config->set_use_conversion_status_indicator(true);
+  }
+  if (!config->has_use_zenz_correction()) {
+    config->set_use_zenz_correction(true);
+  }
+}
+
 Config CreateDefaultConfig() {
   Config config;
   config.set_session_keymap(ConfigHandler::GetDefaultKeyMap());
@@ -112,6 +127,7 @@ Config CreateDefaultConfig() {
   if (GetPlatformSpecificDefaultEmojiSetting()) {
     config.set_use_emoji_conversion(true);
   }
+  ApplyNagiDefaults(&config);
 
   return config;
 }
@@ -152,6 +168,7 @@ void NormalizeConfig(Config* config) {
       !config->has_use_emoji_conversion()) {
     config->set_use_emoji_conversion(true);
   }
+  ApplyNagiDefaults(config);
 }
 
 class ConfigHandlerImpl final {

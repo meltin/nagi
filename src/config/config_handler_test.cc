@@ -133,6 +133,31 @@ TEST_F(ConfigHandlerTest, SetConfig) {
 #endif  // CHANNEL_DEV
 }
 
+// Nagi: the three features are on unless the user turned them off.
+TEST_F(ConfigHandlerTest, NagiFeaturesAreOnUnlessTurnedOff) {
+  // "Reset to defaults" in the settings reads this.
+  EXPECT_TRUE(ConfigHandler::DefaultConfig().use_live_conversion());
+  EXPECT_TRUE(ConfigHandler::DefaultConfig().use_conversion_status_indicator());
+  EXPECT_TRUE(ConfigHandler::DefaultConfig().use_zenz_correction());
+
+  TempDirectory temp_dir = testing::MakeTempDirectoryOrDie();
+  ConfigHandler::SetConfigFileNameForTesting(
+      FileUtil::JoinPath(temp_dir.path(), "nagi_defaults_test_tmp"));
+  ConfigHandler::Reload();
+
+  // A profile saved before the fields existed.
+  ConfigHandler::SetConfig(Config());
+  EXPECT_TRUE(ConfigHandler::GetCopiedConfig().use_live_conversion());
+  EXPECT_TRUE(ConfigHandler::GetCopiedConfig().use_zenz_correction());
+
+  // An explicit choice is kept.
+  Config off;
+  off.set_use_live_conversion(false);
+  ConfigHandler::SetConfig(off);
+  EXPECT_FALSE(ConfigHandler::GetCopiedConfig().use_live_conversion());
+  EXPECT_TRUE(ConfigHandler::GetCopiedConfig().use_conversion_status_indicator());
+}
+
 TEST_F(ConfigHandlerTest, SetMetadata) {
   auto make_Config_with_clock = [](int seconds, bool incognito) {
     Config input = ConfigHandler::DefaultConfig();

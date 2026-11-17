@@ -132,6 +132,11 @@ void SessionHandlerTestBase::TearDown() {
 void SessionHandlerTestBase::ClearState() {
   config::Config config;
   ConfigHandler::GetDefaultConfig(&config);
+  // Nagi turns these on by default. The upstream tests describe the behavior
+  // without them; the tests for them turn them on themselves.
+  config.set_use_live_conversion(false);
+  config.set_use_conversion_status_indicator(false);
+  config.set_use_zenz_correction(false);
   ConfigHandler::SetConfig(config);
 
   // CharacterFormManager is not automatically updated when the config is
