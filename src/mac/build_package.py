@@ -63,7 +63,7 @@ def main():
 
   if args.oss:
     identifier = 'org.nagi.pkg.JapaneseInput'
-    pkg_name = 'Mozc.pkg'
+    pkg_name = 'Nagi.pkg'
   else:
     identifier = 'com.google.pkg.GoogleJapaneseInput'
     pkg_name = 'GoogleJapaneseInput.pkg'

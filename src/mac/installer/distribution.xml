@@ -31,7 +31,7 @@
 -->
 
 <installer-gui-script minSpecVersion="1">
-    <title>Mozc</title>
+    <title>Nagi</title>
     <allowed-os-versions>
         <os-version min="12.0"/>
     </allowed-os-versions>
@@ -48,5 +48,5 @@
     <choice id="org.nagi.pkg.JapaneseInput" visible="false">
         <pkg-ref id="org.nagi.pkg.JapaneseInput"/>
     </choice>
-    <pkg-ref id="org.nagi.pkg.JapaneseInput" version="0" onConclusion="RequireLogout">Mozc.pkg</pkg-ref>
+    <pkg-ref id="org.nagi.pkg.JapaneseInput" version="0" onConclusion="RequireLogout">Nagi.pkg</pkg-ref>
 </installer-gui-script>
