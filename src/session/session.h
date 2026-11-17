@@ -406,9 +406,10 @@ class Session {
   void LeaveLiveConversion();
   // Forgets the live conversion preview and its Zenz correction.
   void EndLiveConversion();
-  // Fills the output with the preview: the engine's conversion, or the Zenz
-  // correction once it has been accepted.
-  void OutputLivePreview(mozc::commands::Command* command);
+  // Turns the conversion output into the preview: the engine's conversion,
+  // or the Zenz correction once it has been accepted. Called by Output()
+  // while a live conversion is on screen.
+  void DecorateLivePreview(mozc::commands::Command* command);
   // Sends the reading of the preview to Zenz.
   void StartZenzCorrection();
   // Handles APPLY_ZENZ_CORRECTION.

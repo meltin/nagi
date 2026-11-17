@@ -426,6 +426,11 @@ bool Session::SendCommand(commands::Command* command) {
   if (context_->state() != ImeContext::CONVERSION) {
     EndLiveConversion();
   }
+  if (context_->state() == ImeContext::PRECOMPOSITION ||
+      context_->state() == ImeContext::DIRECT) {
+    // The composition is over. The same reading may be converted next time.
+    live_conversion_cancelled_key_.clear();
+  }
   MaybeSetUndoStatus(command);
   return result;
 }
@@ -563,6 +568,11 @@ bool Session::SendKey(commands::Command* command) {
 
   if (context_->state() != ImeContext::CONVERSION) {
     EndLiveConversion();
+  }
+  if (context_->state() == ImeContext::PRECOMPOSITION ||
+      context_->state() == ImeContext::DIRECT) {
+    // The composition is over. The same reading may be converted next time.
+    live_conversion_cancelled_key_.clear();
   }
   if (result) {
     MaybeScheduleLiveConversion(command);
@@ -712,13 +722,11 @@ bool Session::ApplyLiveConversion(commands::Command* command) {
       zenz_state_ = kZenzWaiting;
     }
   }
-  OutputLivePreview(command);
+  Output(command);
   return true;
 }
 
-void Session::OutputLivePreview(commands::Command* command) {
-  Output(command);
-
+void Session::DecorateLivePreview(commands::Command* command) {
   // Show a preview, not a conversion with a focused segment.
   commands::Output* output = command->mutable_output();
   output->set_live_conversion(true);
@@ -817,7 +825,7 @@ bool Session::ApplyZenzCorrection(commands::Command* command) {
       }
     }
   }
-  OutputLivePreview(command);
+  Output(command);
   return true;
 }
 
@@ -2095,6 +2103,10 @@ bool Session::CommitInternal(commands::Command* command,
 }
 
 bool Session::Commit(commands::Command* command) {
+  // Commit what is displayed, also when the request is not a key.
+  if (IsLiveConversion() && !zenz_preview_.empty()) {
+    return CommitZenzPreview(command);
+  }
   return CommitInternal(command,
                         context_->GetRequest().zero_query_suggestion());
 }
@@ -3007,6 +3019,11 @@ void Session::Output(commands::Command* command) {
   OutputMode(command);
   context_->mutable_converter()->PopOutput(context_->composer(),
                                            command->mutable_output());
+  // Every output made while a live conversion is on screen must show the same
+  // preview, or Enter would commit something else than what is displayed.
+  if (IsLiveConversion()) {
+    DecorateLivePreview(command);
+  }
 }
 
 void Session::OutputMode(commands::Command* command) const {

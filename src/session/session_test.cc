@@ -10663,13 +10663,14 @@ TEST_F(SessionTest, LiveConversionCallback) {
     EXPECT_FALSE(apply.output().has_candidate_window());
   }
 
-  // Applying twice does nothing more: the state is no longer COMPOSITION.
+  // Applying twice changes nothing: the same preview is reported again.
   {
     commands::Command again;
     *again.mutable_input()->mutable_command() = callback;
     EXPECT_TRUE(session.SendCommand(&again));
-    EXPECT_FALSE(again.output().live_conversion());
+    EXPECT_TRUE(again.output().live_conversion());
     EXPECT_PREEDIT("愛上尾", again);
+    EXPECT_EQ(again.output().preedit().cursor(), 3);
   }
 
   // Typing on the preview continues the reading instead of committing.
@@ -10766,6 +10767,7 @@ class FakeZenzClient : public zenz::ZenzClientInterface {
                std::string_view left_context) override {
     last_id_ = id;
     last_reading_ = std::string(reading);
+    last_context_ = std::string(left_context);
     ++request_count_;
     result_.state = zenz::ZenzResult::PENDING;
     result_.text.clear();
@@ -10783,6 +10785,7 @@ class FakeZenzClient : public zenz::ZenzClientInterface {
 
   uint32_t last_id_ = 0;
   std::string last_reading_;
+  std::string last_context_;
   int request_count_ = 0;
   int cancel_count_ = 0;
   int warm_up_count_ = 0;
@@ -10877,6 +10880,117 @@ TEST_F(ZenzSessionTest, CorrectionReplacesThePreview) {
   SendKey("Enter", &session, &command);
   EXPECT_RESULT_AND_KEY("アイウエオ", "あいうえお", command);
   EXPECT_FALSE(command.output().has_preedit());
+}
+
+TEST_F(ZenzSessionTest, UnboundKeyKeepsThePreviewAndWhatEnterCommits) {
+  FakeZenzClient zenz_client;
+  MockEngine engine;
+  SetUpEngine(&engine);
+  Session session(engine);
+  session.SetConfig(ZenzConfig());
+  InitSessionToPrecomposition(&session);
+
+  commands::Command command = TypeAndApplyLiveConversion(&session);
+  zenz_client.Answer("アイウエオ");
+  command = SendCallback(command, &session);
+  EXPECT_PREEDIT("アイウエオ", command);
+
+  // A key that does nothing in this state must not bring the engine's
+  // conversion back to the screen.
+  command.Clear();
+  SendKey("F13", &session, &command);
+  EXPECT_PREEDIT("アイウエオ", command);
+  EXPECT_TRUE(command.output().live_conversion());
+
+  command.Clear();
+  SendKey("Enter", &session, &command);
+  EXPECT_RESULT_AND_KEY("アイウエオ", "あいうえお", command);
+}
+
+TEST_F(ZenzSessionTest, UnboundKeyKeepsPollingWhileZenzIsPending) {
+  FakeZenzClient zenz_client;
+  MockEngine engine;
+  SetUpEngine(&engine);
+  Session session(engine);
+  session.SetConfig(ZenzConfig());
+  InitSessionToPrecomposition(&session);
+
+  commands::Command command = TypeAndApplyLiveConversion(&session);
+  // The key bumps the generation, so the earlier callback is stale. The new
+  // output must ask the client to keep polling.
+  command.Clear();
+  SendKey("F13", &session, &command);
+  EXPECT_PREEDIT("愛上尾", command);
+  ASSERT_TRUE(command.output().has_callback());
+
+  zenz_client.Answer("アイウエオ");
+  command = SendCallback(command, &session);
+  EXPECT_PREEDIT("アイウエオ", command);
+}
+
+TEST_F(ZenzSessionTest, SubmitCommandCommitsThePreview) {
+  FakeZenzClient zenz_client;
+  MockEngine engine;
+  SetUpEngine(&engine);
+  Session session(engine);
+  session.SetConfig(ZenzConfig());
+  InitSessionToPrecomposition(&session);
+
+  commands::Command command = TypeAndApplyLiveConversion(&session);
+  zenz_client.Answer("アイウエオ");
+  command = SendCallback(command, &session);
+
+  command.Clear();
+  SendCommand(commands::SessionCommand::SUBMIT, &session, &command);
+  EXPECT_RESULT_AND_KEY("アイウエオ", "あいうえお", command);
+}
+
+TEST_F(ZenzSessionTest, LeftContextReachesZenz) {
+  FakeZenzClient zenz_client;
+  MockEngine engine;
+  SetUpEngine(&engine);
+  Session session(engine);
+  session.SetConfig(ZenzConfig());
+  InitSessionToPrecomposition(&session);
+
+  // The client sends the text before the cursor with the first key.
+  commands::Command command;
+  SetSendKeyCommand("a", &command);
+  command.mutable_input()->mutable_context()->set_preceding_text("川の");
+  session.SendKey(&command);
+  command.Clear();
+  InsertCharacterChars("iueo", &session, &command);
+
+  // The request is made later, from a callback that carries no context.
+  command = SendCallback(command, &session);
+  EXPECT_EQ(zenz_client.request_count_, 1);
+  EXPECT_EQ(zenz_client.last_context_, "川の");
+}
+
+TEST_F(ZenzSessionTest, CancelledReadingIsConvertedAgainInANewComposition) {
+  FakeZenzClient zenz_client;
+  MockEngine engine;
+  SetUpEngine(&engine);
+  Session session(engine);
+  session.SetConfig(ZenzConfig());
+  InitSessionToPrecomposition(&session);
+
+  commands::Command command = TypeAndApplyLiveConversion(&session);
+  // Esc goes back to kana, and the same reading is left alone.
+  command.Clear();
+  SendKey("ESC", &session, &command);
+  EXPECT_PREEDIT("あいうえお", command);
+  EXPECT_FALSE(command.output().has_callback());
+
+  // Esc again ends the composition.
+  command.Clear();
+  SendKey("ESC", &session, &command);
+  EXPECT_FALSE(command.output().has_preedit());
+
+  // The same reading typed again is converted as usual.
+  command.Clear();
+  InsertCharacterChars("aiueo", &session, &command);
+  EXPECT_TRUE(command.output().has_callback());
 }
 
 TEST_F(ZenzSessionTest, RejectedAnswerKeepsTheEngineConversion) {
