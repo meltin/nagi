@@ -305,6 +305,9 @@ class Session {
   // Zenz correction shown instead of the engine conversion. Empty when Zenz
   // agrees with the engine or has no accepted answer.
   std::string zenz_preview_;
+  // Suggestions that were on screen when the live conversion replaced the
+  // reading. Kept visible next to the preview. Empty when there were none.
+  commands::CandidateWindow live_suggestion_window_;
 
   std::unique_ptr<ImeContext> CreateContext(
       const EngineInterface& engine) const;

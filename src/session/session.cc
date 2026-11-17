@@ -332,6 +332,25 @@ bool Session::SendCommand(commands::Command* command) {
   }
 
   DCHECK_EQ(false, result);
+  if (IsLiveConversion()) {
+    // A candidate id from the client names a suggestion shown next to the
+    // preview, not a candidate of the engine's conversion underneath.
+    switch (command->input().command().type()) {
+      case commands::SessionCommand::SELECT_CANDIDATE:
+      case commands::SessionCommand::SUBMIT_CANDIDATE:
+        // Back to the reading with its suggestions, where the id is valid.
+        LeaveLiveConversion();
+        Suggest(command->input());
+        break;
+      case commands::SessionCommand::HIGHLIGHT_CANDIDATE:
+        command->mutable_output()->set_consumed(true);
+        Output(command);
+        MaybeSetUndoStatus(command);
+        return true;
+      default:
+        break;
+    }
+  }
   switch (command->input().command().type()) {
     case commands::SessionCommand::NONE:
       result = DoNothing(command);
@@ -599,6 +618,7 @@ void Session::EndLiveConversion() {
   }
   zenz_state_ = kZenzOff;
   zenz_preview_.clear();
+  live_suggestion_window_.Clear();
 }
 
 bool Session::SendKeyLiveConversionState(commands::Command* command) {
@@ -626,6 +646,15 @@ bool Session::SendKeyLiveConversionState(commands::Command* command) {
     case keymap::ConversionState::INSERT_CHARACTER:
       // InsertCharacter() leaves the live conversion by itself.
       return InsertCharacter(command);
+    case keymap::ConversionState::PREDICT_AND_CONVERT:
+      // Tab picks from the suggestions shown next to the preview, as it does
+      // while typing, instead of walking the engine's conversion.
+      if (live_suggestion_window_.candidate_size() > 0) {
+        LeaveLiveConversion();
+        return PredictAndConvert(command);
+      }
+      EndLiveConversion();
+      return SendKeyConversionState(command);
     case keymap::ConversionState::CANCEL:
       // Back to kana. Do not convert the same reading again by itself.
       EndLiveConversion();
@@ -701,8 +730,13 @@ bool Session::ApplyLiveConversion(commands::Command* command) {
     }
     return true;
   }
-  // Read the reading before the state changes: it is what Zenz converts.
+  // Read these before the state changes. The reading is what Zenz converts,
+  // and converting drops the suggestions that typing left on screen.
   const std::string reading = context_->composer().GetQueryForConversion();
+  commands::Output suggestion_output;
+  if (context_->converter().CheckState(EngineConverterInterface::SUGGESTION)) {
+    context_->converter().FillOutput(context_->composer(), &suggestion_output);
+  }
   if (!context_->mutable_converter()->Convert(context_->composer(),
                                               context_->client_context())) {
     OutputComposition(command);
@@ -713,6 +747,9 @@ bool Session::ApplyLiveConversion(commands::Command* command) {
   live_conversion_active_ = true;
   live_conversion_reading_ = reading;
   live_conversion_engine_text_.clear();
+  if (suggestion_output.candidate_window().candidate_size() > 0) {
+    live_suggestion_window_ = suggestion_output.candidate_window();
+  }
 
   if (context_->GetConfig().use_zenz_correction() &&
       zenz::IsZenzReading(reading)) {
@@ -732,7 +769,11 @@ void Session::DecorateLivePreview(commands::Command* command) {
   output->set_live_conversion(true);
   // The engine opens the candidate window by itself when a candidate is a
   // spelling correction. A preview nobody asked to convert must not pop it up.
+  // Only the suggestions that typing had on screen stay.
   output->clear_candidate_window();
+  if (live_suggestion_window_.candidate_size() > 0) {
+    *output->mutable_candidate_window() = live_suggestion_window_;
+  }
   if (output->has_preedit()) {
     commands::Preedit* preedit = output->mutable_preedit();
     std::string engine_text;

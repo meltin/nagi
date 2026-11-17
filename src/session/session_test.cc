@@ -10829,6 +10829,18 @@ class ZenzSessionTest : public SessionTest {
         .WillRepeatedly(DoAll(SetArgPointee<1>(segments), Return(true)));
   }
 
+  // Makes typing show one suggestion, "アイウエオ会".
+  void SetUpSuggestion() {
+    Segments segments;
+    Segment* segment = segments.add_segment();
+    segment->set_key("あいうえお");
+    AddCandidate("あいうえお", "アイウエオ会", segment);
+    EXPECT_CALL(*converter_, StartPrediction(_, _))
+        .WillRepeatedly(DoAll(SetArgPointee<1>(segments), Return(true)));
+    EXPECT_CALL(*converter_, StartPredictionWithPreviousSuggestion(_, _, _))
+        .WillRepeatedly(DoAll(SetArgPointee<2>(segments), Return(true)));
+  }
+
   static config::Config ZenzConfig() {
     config::Config config;
     config.set_use_live_conversion(true);
@@ -10928,6 +10940,71 @@ TEST_F(ZenzSessionTest, PreviewDoesNotOpenTheCandidateWindow) {
   command.Clear();
   SendKey("Space", &session, &command);
   EXPECT_TRUE(command.output().has_candidate_window());
+}
+
+TEST_F(ZenzSessionTest, PreviewKeepsTheSuggestions) {
+  FakeZenzClient zenz_client;
+  MockEngine engine;
+  SetUpEngine(&engine, true);
+  SetUpSuggestion();
+  Session session(engine);
+  session.SetConfig(ZenzConfig());
+  InitSessionToPrecomposition(&session);
+
+  commands::Command command = TypeAndApplyLiveConversion(&session);
+  EXPECT_PREEDIT("愛上尾", command);
+  // The suggestions typing had on screen, not the engine's candidate list.
+  ASSERT_TRUE(command.output().has_candidate_window());
+  EXPECT_EQ(command.output().candidate_window().category(),
+            commands::SUGGESTION);
+  EXPECT_FALSE(command.output().candidate_window().has_focused_index());
+  EXPECT_EQ(command.output().candidate_window().candidate(0).value(),
+            "アイウエオ会");
+  const std::string shown =
+      command.output().candidate_window().SerializeAsString();
+
+  // Polling Zenz does not change them.
+  command = SendCallback(command, &session);
+  EXPECT_EQ(command.output().candidate_window().SerializeAsString(), shown);
+  zenz_client.Answer("アイウエオ");
+  command = SendCallback(command, &session);
+  EXPECT_PREEDIT("アイウエオ", command);
+  EXPECT_EQ(command.output().candidate_window().SerializeAsString(), shown);
+}
+
+TEST_F(ZenzSessionTest, TabPicksFromTheSuggestions) {
+  FakeZenzClient zenz_client;
+  MockEngine engine;
+  SetUpEngine(&engine);
+  SetUpSuggestion();
+  Session session(engine);
+  session.SetConfig(ZenzConfig());
+  InitSessionToPrecomposition(&session);
+
+  commands::Command command = TypeAndApplyLiveConversion(&session);
+  command.Clear();
+  SendKey("Tab", &session, &command);
+  EXPECT_PREEDIT("アイウエオ会", command);
+  EXPECT_FALSE(command.output().live_conversion());
+}
+
+TEST_F(ZenzSessionTest, ClickedSuggestionIsWhatGetsCommitted) {
+  FakeZenzClient zenz_client;
+  MockEngine engine;
+  SetUpEngine(&engine);
+  SetUpSuggestion();
+  Session session(engine);
+  session.SetConfig(ZenzConfig());
+  InitSessionToPrecomposition(&session);
+
+  commands::Command command = TypeAndApplyLiveConversion(&session);
+  const int id = command.output().candidate_window().candidate(0).id();
+  command.Clear();
+  SetSendCommandCommand(commands::SessionCommand::SUBMIT_CANDIDATE, &command);
+  command.mutable_input()->mutable_command()->set_id(id);
+  session.SendCommand(&command);
+  // Not "愛上尾", the engine's candidate with the same id.
+  EXPECT_RESULT("アイウエオ会", command);
 }
 
 TEST_F(ZenzSessionTest, UnboundKeyKeepsPollingWhileZenzIsPending) {
