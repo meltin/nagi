@@ -183,9 +183,20 @@ int main(int argc, char** argv) {
     int callbacks = 0;
     // "/" is a pause: the delayed callbacks run before the typing goes on.
     for (const absl::string_view chunk : absl::StrSplit(keys, '/')) {
-      for (const char c : chunk) {
+      // "{F10}", "{F6}", "{BS}" and "{SPACE}" are keys; the rest is typed.
+      for (size_t i = 0; i < chunk.size(); ++i) {
         KeyEvent key;
-        key.set_key_code(c);
+        const size_t close = chunk.find('}', i);
+        if (chunk[i] == '{' && close != absl::string_view::npos) {
+          const absl::string_view name = chunk.substr(i + 1, close - i - 1);
+          key = SpecialKey(name == "F10"     ? KeyEvent::F10
+                           : name == "F6"    ? KeyEvent::F6
+                           : name == "SPACE" ? KeyEvent::SPACE
+                                             : KeyEvent::BACKSPACE);
+          i = close;
+        } else {
+          key.set_key_code(chunk[i]);
+        }
         output = typist.SendKey(key);
         if (!quiet) {
           std::cout << "     key  " << StatusName(output) << "\t"
