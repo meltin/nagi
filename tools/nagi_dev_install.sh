@@ -17,6 +17,15 @@ fi
 echo "Installing $pkg (asks for your password)"
 sudo installer -pkg "$pkg" -target /
 
-# macOS starts the new ones on the next key. llama-server goes with NagiConverter.
-killall Nagi NagiConverter NagiRenderer 2>/dev/null || true
+# launchd remembers the signature of the binaries it loaded, and refuses to start
+# rebuilt ones ("spawn failed", exit 78) until the jobs are loaded again. Without
+# this the converter stays down: no conversion, and the settings cannot be saved.
+for job in Converter Renderer; do
+  label="org.nagi.inputmethod.Japanese.$job"
+  launchctl bootout "gui/$UID/$label" 2>/dev/null || true
+  launchctl bootstrap "gui/$UID" "/Library/LaunchAgents/$label.plist"
+done
+
+# macOS starts a new one on the next key. llama-server goes with NagiConverter.
+killall Nagi 2>/dev/null || true
 echo "Done. If typing does not come back, switch the input source to ABC and back."
