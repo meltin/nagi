@@ -36,6 +36,7 @@ TEST(AutomaticEnglishTest, TypeWithRuns) {
       {"gitdepushsuru", {{0, 3}, {5, 9}}, "gitでpushする"},
       {"kyouhagoog", {{6, 10}}, "きょうはgoog"},
       {"kyouha", {}, "きょうは"},
+      {"kyouha,googlede.", {{7, 13}}, "きょうは、googleで。"},
   };
   for (const auto& c : cases) {
     composer.EditErase();

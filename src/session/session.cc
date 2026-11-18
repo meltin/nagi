@@ -634,8 +634,14 @@ void Session::ApplyAutomaticEnglish(bool end_of_input) {
   composer::Composer* composer = context_->mutable_composer();
   const ConverterInterface* converter = context_->converter().GetConverter();
   const std::string keys = composer->GetRawString();
+  // Marks and digits end a stretch of romaji. They are typed again as they
+  // are when the composition is rebuilt.
+  const auto is_separator = [](char c) {
+    return absl::ascii_isdigit(static_cast<unsigned char>(c)) ||
+           std::string_view(",.!?").find(c) != std::string_view::npos;
+  };
   // Only plain romaji typed at the end of the composition. Anything else,
-  // such as a digit or a capital, leaves the composition as it is.
+  // such as a capital, leaves the composition as it is.
   if (!context_->GetConfig().use_automatic_english() ||
       context_->GetConfig().preedit_method() != config::Config::ROMAN ||
       context_->state() != ImeContext::COMPOSITION || converter == nullptr ||
@@ -643,8 +649,9 @@ void Session::ApplyAutomaticEnglish(bool end_of_input) {
       composer->GetInputMode() != transliteration::HIRAGANA ||
       composer->GetInputFieldType() == commands::Context::PASSWORD ||
       composer->GetCursor() != composer->GetLength() ||
-      !std::all_of(keys.begin(), keys.end(), [](char c) {
-        return absl::ascii_islower(static_cast<unsigned char>(c)) || c == '-';
+      !std::all_of(keys.begin(), keys.end(), [&](char c) {
+        return absl::ascii_islower(static_cast<unsigned char>(c)) ||
+               c == '-' || is_separator(c);
       })) {
     english_keys_.clear();
     return;
@@ -656,14 +663,43 @@ void Session::ApplyAutomaticEnglish(bool end_of_input) {
   }
   const english::ConverterJudge judge(converter);
   const english::EnglishDetector detector(&words, &reader, &judge);
-  // The last result helps only when the keys are the same or one longer.
-  // After an edit it may point past the end of them.
-  const bool continues = !english_keys_.empty() &&
-                         keys.size() <= english_keys_.size() + 1 &&
-                         absl::StartsWith(keys, english_keys_);
-  std::vector<english::EnglishDetector::Run> runs =
-      detector.Detect(keys, end_of_input, continues ? &english_runs_ : nullptr);
-  // After an edit the composition may hold part of a word typed in English.
+  using Run = english::EnglishDetector::Run;
+  // The last result helps only when one key was added, or none before
+  // converting. After an edit it may point past the end of the keys, and the
+  // composition may hold part of a word typed in English.
+  const bool continues =
+      !english_keys_.empty() && absl::StartsWith(keys, english_keys_) &&
+      (keys.size() == english_keys_.size() + 1 ||
+       (end_of_input && keys.size() == english_keys_.size()));
+
+  // The stretches of romaji between the separators. Every stretch but the
+  // last is finished: its consonants at the end cannot become kana.
+  std::vector<Run> runs;
+  size_t begin = 0;
+  while (begin <= keys.size()) {
+    size_t end = begin;
+    while (end < keys.size() && !is_separator(keys[end])) {
+      ++end;
+    }
+    const bool last = end == keys.size();
+    // A stretch that ended before the last key was looked at already.
+    const bool settled = continues && end + 1 < keys.size();
+    std::vector<Run> previous;
+    for (const Run& run : english_runs_) {
+      if (continues && run.begin >= begin && run.end <= end) {
+        previous.push_back(Run{run.begin - begin, run.end - begin});
+      }
+    }
+    const std::vector<Run> found =
+        settled ? previous
+                : detector.Detect(
+                      std::string_view(keys).substr(begin, end - begin),
+                      end_of_input || !last, continues ? &previous : nullptr);
+    for (const Run& run : found) {
+      runs.push_back(Run{run.begin + begin, run.end + begin});
+    }
+    begin = end + 1;
+  }
   const bool changed = continues ? runs != english_runs_
                                  : !runs.empty() || !english_runs_.empty();
   english_keys_ = keys;
