@@ -573,6 +573,7 @@ void ConfigDialog::ConvertFromProto(const config::Config& config) {
   SET_CHECKBOX(zenzCorrectionCheckBox, use_zenz_correction);
   SET_CHECKBOX(initialCandidateWindowCheckBox,
                show_candidate_window_on_initial_conversion);
+  SET_CHECKBOX(automaticEnglishCheckBox, use_automatic_english);
   zenzDelaySpinBox->setValue(std::clamp<int>(config.zenz_delay_msec(), 0, 2000));
   liveConversionDelaySpinBox->setValue(
       std::clamp<int>(config.live_conversion_delay_msec(), 0, 2000));
@@ -677,6 +678,7 @@ void ConfigDialog::ConvertToProto(config::Config* config) const {
   GET_CHECKBOX(zenzCorrectionCheckBox, use_zenz_correction);
   GET_CHECKBOX(initialCandidateWindowCheckBox,
                show_candidate_window_on_initial_conversion);
+  GET_CHECKBOX(automaticEnglishCheckBox, use_automatic_english);
   config->set_zenz_delay_msec(static_cast<uint32_t>(zenzDelaySpinBox->value()));
   config->set_live_conversion_delay_msec(
       static_cast<uint32_t>(liveConversionDelaySpinBox->value()));

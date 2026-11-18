@@ -1101,7 +1101,14 @@
            </property>
           </widget>
          </item>
-         <item row="7" column="0">
+         <item row="7" column="0" colspan="3">
+          <widget class="QCheckBox" name="automaticEnglishCheckBox">
+           <property name="text">
+            <string>Keep English words as typed while typing romaji</string>
+           </property>
+          </widget>
+         </item>
+         <item row="8" column="0">
           <spacer name="liveConversionTabBottomSpacer">
            <property name="orientation">
             <enum>Qt::Orientation::Vertical</enum>

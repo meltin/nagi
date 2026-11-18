@@ -289,6 +289,10 @@
         <translation>初回の変換操作で候補ウィンドウを開く(ライブ変換オフのとき)</translation>
     </message>
     <message>
+        <source>Keep English words as typed while typing romaji</source>
+        <translation>ローマ字入力中の英単語を英字のままにする(自動入力)</translation>
+    </message>
+    <message>
         <source>Live conversion</source>
         <translation>ライブ変換</translation>
     </message>
