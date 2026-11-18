@@ -10,6 +10,14 @@ src="${0:A:h}/../src"
 pkg="$src/bazel-bin/mac/Nagi.pkg"
 
 if [[ "${1:-}" != "--no-build" ]]; then
+  # The extra dictionaries are generated, not committed: 73 MB of data whose
+  # sources have different licenses (Mozkey does the same in its release build).
+  # Without them the build works and quietly converts with the plain Mozc
+  # dictionary, so generate them here when they are missing.
+  if [[ -z "$(print -l "$src"/data/dictionary_nagi/generated/*.txt(N))" ]]; then
+    echo "Generating the extra dictionaries (once, a few minutes, downloads about 50 MB)"
+    zsh "${0:A:h}/dictionary/prepare_dictionary.sh"
+  fi
   # A Bazel server left over from another shell fails with "getconf failed".
   (cd "$src" && bazelisk shutdown >/dev/null 2>&1; bazelisk build package --config release_build)
 fi

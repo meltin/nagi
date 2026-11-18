@@ -57,13 +57,14 @@ Zenz のモデルは、素の llama.cpp が知らないトークナイザ名を�
 
 これらがないときは、Zenz を有効にしても問い合わせは行われず、Mozc の変換だけが表示されます。
 
-## 辞書を強化する
+## 足している辞書
 
-Mozc の標準辞書に、Mozkey が配布版で足している辞書を加えられます。
+Mozc の標準辞書に、Mozkey が配布版で足している辞書を加えています。用意は要りません。`tools/nagi_dev_install.sh` が、その Mac で最初にビルドするときに作ります(数分、約 50MB を取得、`uv` が必要)。
+
+辞書はリポジトリに入れていません。73MB あり、出どころごとにライセンスが違うためです。Mozkey も、配布用のビルドのなかで作っています。作り直したいときは、次を実行します。
 
 ```sh
-zsh tools/dictionary/prepare_dictionary.sh   # 辞書を作る(約 50MB を取得、数分)
-zsh tools/nagi_dev_install.sh                # ビルドして入れ直す
+zsh tools/dictionary/prepare_dictionary.sh
 ```
 
 | 足すもの | 取り込み元 | 語数 |
