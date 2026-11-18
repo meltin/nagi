@@ -173,6 +173,8 @@ bool HasVisibleFooterLabel(const mozc::commands::Footer &footer) {
 #pragma mark drawing
 
 - (NSSize)updateLayout {
+  // Follow the appearance, which can change while the renderer is running.
+  style_ = MacViewUtil::RendererStyleFor(self.effectiveAppearance);
   candidateStringsCache_ = nil;
   tableLayout_.Initialize(candidate_window_.candidate_size(), kNumberOfColumns);
   tableLayout_.SetWindowBorder(style_.window_border());
@@ -308,7 +310,7 @@ bool HasVisibleFooterLabel(const mozc::commands::Footer &footer) {
   [NSGraphicsContext saveGraphicsState];
   [windowPath addClip];
   // Rows do not cover the gaps between columns.
-  [NSColor.whiteColor set];
+  [MacViewUtil::ToNSColor(style_.candidate_style().background_color()) set];
   [NSBezierPath fillRect:self.bounds];
 
   for (int i = 0; i < candidate_window_.candidate_size(); ++i) {

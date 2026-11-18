@@ -86,6 +86,9 @@ void InfolistWindow::SetCandidateWindow(const CandidateWindow& candidate_window)
 
   if (!window_) {
     InitWindow();
+    // The view draws a rounded shape; the rest of the window shows through.
+    [window_ setOpaque:NO];
+    [window_ setBackgroundColor:NSColor.clearColor];
   }
   InfolistView* infolist_view = (InfolistView*)view_;
   [infolist_view setCandidateWindow:&candidate_window];

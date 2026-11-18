@@ -181,22 +181,40 @@ using mozc::renderer::mac::MacViewUtil;
   }
   ypos += infostyle.window_border();
 
-  if (draw_flag) {
-    [MacViewUtil::ToNSColor(infostyle.border_color()) set];
-    [NSBezierPath setDefaultLineWidth:infostyle.window_border()];
-    [NSBezierPath setDefaultLineJoinStyle:NSLineJoinStyleMiter];
-    [NSBezierPath strokeRect:NSMakeRect(0.5, 0.5, infostyle.window_width() - 1, ypos - 1)];
-  }
+  // The border is drawn by drawRect:, along the rounded outline.
 
   return NSMakeSize(infostyle.window_width(), ypos);
 }
 
 - (NSSize)updateLayout {
+  // Follow the appearance, which can change while the renderer is running.
+  style_ = MacViewUtil::RendererStyleFor(self.effectiveAppearance);
   return [self drawView:false];
 }
 
 - (void)drawRect:(NSRect)rect {
+  // Rounded like the candidate window. The window is transparent, so the corners
+  // outside the shape must be cleared.
+  NSRectFillUsingOperation(self.bounds, NSCompositingOperationClear);
+  [NSGraphicsContext saveGraphicsState];
+  [[self outline] addClip];
+  // The usage style leaves the rows without a background of their own. Use the
+  // candidate window's, which the two windows shared when the window itself was filled.
+  [MacViewUtil::ToNSColor(style_.candidate_style().background_color()) set];
+  [NSBezierPath fillRect:self.bounds];
   [self drawView:true];
+  [NSGraphicsContext restoreGraphicsState];
+
+  [MacViewUtil::ToNSColor(style_.infolist_style().border_color()) setStroke];
+  [[self outline] stroke];
+  [self.window invalidateShadow];
+}
+
+- (NSBezierPath *)outline {
+  const CGFloat kCornerRadius = 6;  // Same as the candidate window.
+  return [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(self.bounds, 0.5, 0.5)
+                                         xRadius:kCornerRadius
+                                         yRadius:kCornerRadius];
 }
 
 @end

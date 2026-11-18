@@ -30,6 +30,7 @@
 #include "renderer/mac/mac_view_util.h"
 #include "base/coordinates.h"
 #include "protocol/renderer_style.pb.h"
+#include "renderer/renderer_style_handler.h"
 
 namespace mozc {
 namespace renderer {
@@ -57,6 +58,14 @@ mozc::Rect MacViewUtil::ToRect(const NSRect &nsrect) {
 
 NSSize MacViewUtil::applyTheme(const NSSize &size, const RendererStyle::TextStyle &style) {
   return NSMakeSize(size.width + style.left_padding() + style.right_padding(), size.height);
+}
+
+mozc::renderer::RendererStyle MacViewUtil::RendererStyleFor(NSAppearance *appearance) {
+  NSAppearanceName name = [appearance
+      bestMatchFromAppearancesWithNames:@[ NSAppearanceNameAqua, NSAppearanceNameDarkAqua ]];
+  return RendererStyleHandler::GetRendererStyle([name isEqualToString:NSAppearanceNameDarkAqua]
+                                                    ? RendererStyleHandler::ColorTheme::kDark
+                                                    : RendererStyleHandler::ColorTheme::kLight);
 }
 
 NSColor *MacViewUtil::MacViewUtil::ToNSColor(

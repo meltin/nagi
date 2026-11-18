@@ -44,6 +44,9 @@ namespace mac {
 // this is pure static class
 class MacViewUtil {
  public:
+  // Nagi: the renderer style for |appearance|: the dark one for a dark appearance.
+  static mozc::renderer::RendererStyle RendererStyleFor(NSAppearance *appearance);
+
   static NSColor *ToNSColor(
       const mozc::renderer::RendererStyle::RGBAColor &color);
 
