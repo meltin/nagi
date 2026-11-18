@@ -57,6 +57,27 @@ Zenz のモデルは、素の llama.cpp が知らないトークナイザ名を�
 
 これらがないときは、Zenz を有効にしても問い合わせは行われず、Mozc の変換だけが表示されます。
 
+## 辞書を強化する
+
+Mozc の標準辞書に、Mozkey が配布版で足している辞書を加えられます。
+
+```sh
+zsh tools/dictionary/prepare_dictionary.sh   # 辞書を作る(約 50MB を取得、数分)
+zsh tools/nagi_dev_install.sh                # ビルドして入れ直す
+```
+
+| 足すもの | 取り込み元 | 語数 |
+|---|---|---|
+| 地名と一般語彙 | mozcdic-ut-place-names、mozcdic-ut-sudachidict | 約 108 万 |
+| 人名 | mozcdic-ut-personal-names | 約 5.4 万 |
+| ネット・サブカルの固有名詞 | dic-nico-intersection-pixiv | 約 4.9 万 |
+| 区切りの崩れを防ぐ語 | Mozkey の生成スクリプト | 537 |
+
+- 取得元の版とハッシュ、絞り込み、検査は、どれも Mozkey v1.1.0 のものをそのまま使います。Nagi 側にあるのは、その手順を Mac で動かすスクリプトだけです。
+- 作った辞書は `src/data/dictionary_nagi/generated/` に置かれ、リポジトリには入りません。配布物に含めるときは、Mozkey の `src/data/installer/DICTIONARY_NOTICES.md` にある出典とライセンスの表記が必要です。
+- 元に戻すには、`src/data/dictionary_nagi/generated/*.txt` を消してビルドし直します。
+- 辞書がないときは、Mozc の標準辞書だけでビルドされます。
+
 ## 開発中の更新
 
 一度インストールしたあとは、次の 1 行でビルド、上書きインストール、プロセスの再起動まで行えます。ログアウトも、入力ソースの追加し直しも要りません。途中で管理者のパスワードを聞かれます。
