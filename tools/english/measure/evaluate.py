@@ -1,80 +1,141 @@
 #!/usr/bin/env python3
 """Applies a rule to the numbers of prefix_collect.py, key by key, and counts
-- inputs whose final display is wrong (Japanese shown as English, or the English word
+- inputs whose final display is wrong (Japanese shown as English, or an English word
   missed), and
 - inputs and keys where English was shown on the way although it should not have been.
 
-  python3 tools/english/measure/evaluate.py PREFIX.tsv
+  python3 tools/english/measure/evaluate.py PREFIX.tsv [--examples]
 
-The rules tried here are a prototype for choosing thresholds. The IME's own detector
-is measured with the same inputs once it exists.
+The rule here is a prototype for choosing thresholds. The IME's own detector is
+measured with the same inputs once it exists.
 """
-import csv, collections, sys
-rows=collections.defaultdict(lambda: collections.defaultdict(list))  # input -> typed -> candidates
-meta={}
-for r in csv.DictReader(open(sys.argv[1]),delimiter='\t',quoting=csv.QUOTE_NONE):
-    for k in ('input','typed','tail','begin','end','english_begin','english_end','scowl','reads','cost_kana','cost_english','cost_word','word_is_prefix'): r[k]=int(r[k])
-    r['delta']=r['cost_kana']-r['cost_english']; r['len']=r['end']-r['begin']
-    meta[r['input']]=(r['set'],r['keys'],(r['english_begin'],r['english_end']))
-    rows[r['input']][r['typed']].append(r)
-
-progress=collections.defaultdict(dict)
+import collections
+import csv
 import os
-if os.path.exists(sys.argv[1]+'.progress'):
-    for r in csv.DictReader(open(sys.argv[1]+'.progress'),delimiter='\t',quoting=csv.QUOTE_NONE):
-        progress[int(r['input'])][int(r['typed'])]=int(r['begin'])
+import re
+import sys
 
-def make_rule2(t_unread, readable):
-    # readable: list of (min_len, min_cost_word, min_delta); any match makes it English
-    def rule(c, body_len):
-        if c['word']=='-': return False
-        if c['reads']==0: return c['delta']>t_unread
-        if c['end']==body_len and c['word_is_prefix']: return False
-        return any(c['len']>=l and c['cost_word']>w and c['delta']>d for l,w,d in readable)
-    return rule
+import romaji
 
-def make_rule(t_unread, t_read, hold):
-    def rule(c, body_len):
-        if c['word']=='-': return False
-        if c['reads']==0: return c['delta']>t_unread
-        t=t_read.get(min(c['len'],5))
-        if t is None or c['delta']<=t: return False
-        if hold and c['end']==body_len and c['word_is_prefix']: return False
-        return True
-    return rule
+INT_FIELDS = ('input', 'typed', 'tail', 'begin', 'end', 'scowl', 'reads', 'cost_kana',
+              'cost_english', 'cost_word', 'word_is_prefix')
+# Rule: a word that does not read as kana is English when showing it as English costs
+# at most this much more than reading the keys as kana.
+UNREADABLE_MARGIN = 5500
+# A word that also reads as kana needs more: (minimum letters, minimum cost of the word
+# alone as kana, margin). Any line that matches makes it English.
+READABLE_RULES = ((4, 12000, 10000), (4, 9000, 6000))
 
-def evaluate(rule, verbose=False):
-    stats=collections.defaultdict(collections.Counter); examples=collections.defaultdict(list)
-    for i,steps in rows.items():
-        name,keys,english=meta[i]
-        shown=[]  # per step: chosen (begin,end) or None
-        for n in sorted(steps):
-            cands=steps[n]; body_len=n-cands[0]['tail']
-            ok=[c for c in cands if rule(c,body_len)]
-            # The run that starts first wins; among those, the one that fits best.
-            best=min(ok,key=lambda c:(c['begin'],-c['delta'])) if ok else None
-            span=(best['begin'],best['end']) if best else None
-            if n in progress.get(i,{}) and (span is None or progress[i][n]<=span[0]): span=(progress[i][n],n)
-            shown.append((n,span))
-        final=shown[-1][1] if shown and shown[-1][0]==len(keys) else None
-        s=stats[name]; s['inputs']+=1; s['keys']+=len(shown)
-        expected=english if english[0]>=0 else None
-        if final!=expected:
-            s['final_wrong']+=1
-            if len(examples[name,'final'])<12: examples[name,'final'].append((keys,final and keys[final[0]:final[1]],expected and keys[expected[0]:expected[1]]))
-        # transient: a step shows English that the expected answer does not contain
-        bad_steps=[n for n,sp in shown if sp and not (expected and sp[0]==expected[0] and sp[1]<=expected[1])]
-        if bad_steps:
-            s['inputs_with_flicker']+=1; s['flicker_keys']+=len(bad_steps)
-            if len(examples[name,'flicker'])<8: examples[name,'flicker'].append((keys,[ (n,keys[sp[0]:sp[1]]) for n,sp in shown if sp][:4]))
-    for name in sorted(stats):
-        s=stats[name]
-        print(f"  {name:20s} inputs {s['inputs']:6d}  final wrong {s['final_wrong']:5d} ({100*s['final_wrong']/s['inputs']:.2f}%)  inputs with flicker {s['inputs_with_flicker']:5d} ({100*s['inputs_with_flicker']/s['inputs']:.2f}%)  flicker keys {100*s['flicker_keys']/max(1,s['keys']):.2f}%")
-    if verbose:
-        for k,v in examples.items(): print(' ',k); [print('    ',e) for e in v]
 
-if __name__=='__main__':
-    for label,rule in [
-        ('E2 unread>-5500; readable (len4,word>12000,d>-10000) or (len4,word>9000,d>-6000); earliest run wins', make_rule2(-5500,[(4,12000,-10000),(4,9000,-6000)])),
-    ]:
-        print(label); evaluate(rule, verbose=True)
+def load(path):
+  steps = collections.defaultdict(lambda: collections.defaultdict(list))
+  meta = {}
+  with open(path, encoding='utf-8') as lines:
+    for row in csv.DictReader(lines, delimiter='\t', quoting=csv.QUOTE_NONE):
+      for field in INT_FIELDS:
+        row[field] = int(row[field])
+      row['delta'] = row['cost_kana'] - row['cost_english']
+      meta[row['input']] = (row['set'], row['keys'], row['display'])
+      steps[row['input']][row['typed']].append(row)
+  progress = collections.defaultdict(dict)
+  if os.path.exists(path + '.progress'):
+    with open(path + '.progress', encoding='utf-8') as lines:
+      for row in csv.DictReader(lines, delimiter='\t', quoting=csv.QUOTE_NONE):
+        progress[int(row['input'])][int(row['typed'])] = int(row['begin'])
+  return steps, meta, progress
+
+
+def is_english(candidate, body_length):
+  if candidate['word'] == '-':
+    return False
+  if not candidate['reads']:
+    return candidate['delta'] > -UNREADABLE_MARGIN
+  if candidate['end'] == body_length and candidate['word_is_prefix']:
+    return False  # A longer Japanese word may still be coming.
+  length = candidate['end'] - candidate['begin']
+  return any(length >= letters and candidate['cost_word'] > word_cost and
+             candidate['delta'] > -margin for letters, word_cost, margin in READABLE_RULES)
+
+
+def choose(candidates, typed, in_progress_begin):
+  """The English runs to show after |typed| keys: [(begin, end)]."""
+  body_length = typed - candidates[0]['tail']
+  runs = []
+  # From the left, the best run that starts first, then on after it.
+  for candidate in sorted((c for c in candidates if is_english(c, body_length)),
+                          key=lambda c: (c['begin'], -c['delta'])):
+    if not runs or candidate['begin'] >= runs[-1][1]:
+      runs.append((candidate['begin'], candidate['end']))
+  if in_progress_begin is not None:
+    runs = [run for run in runs if run[1] <= in_progress_begin]
+    runs.append((in_progress_begin, typed))
+  return runs
+
+
+def display(keys, runs):
+  out = []
+  position = 0
+  for begin, end in runs:
+    out.append(romaji.to_kana(keys[position:begin]))
+    out.append(keys[begin:end])
+    position = end
+  out.append(romaji.to_kana(keys[position:]))
+  return ''.join(out)
+
+
+def expected_runs(keys, shown):
+  """Where the English words of the expected display are in the keys."""
+  runs = []
+  position = 0
+  for word in re.findall(r'[a-z]{2,}', shown):
+    begin = keys.find(word, position)
+    if begin < 0:
+      break
+    runs.append((begin, begin + len(word)))
+    position = begin + len(word)
+  return runs
+
+
+def main():
+  steps, meta, progress = load(sys.argv[1])
+  stats = collections.defaultdict(collections.Counter)
+  examples = collections.defaultdict(list)
+  for index, by_typed in steps.items():
+    name, keys, shown = meta[index]
+    wanted = expected_runs(keys, shown)
+    counter = stats[name]
+    counter['inputs'] += 1
+    flicker = []
+    final = None
+    for typed in sorted(by_typed):
+      runs = choose(by_typed[typed], typed, progress[index].get(typed))
+      counter['keys'] += 1
+      # English on screen that is not (the beginning of) a wanted word.
+      wrong = [keys[b:e] for b, e in runs
+               if not any(b == wb and e <= we for wb, we in wanted)]
+      if wrong:
+        flicker.append((typed, wrong))
+      if typed == len(keys):
+        final = display(keys, runs)
+    if final is not None and final != shown:
+      counter['final_wrong'] += 1
+      examples[name, 'final'].append((keys, final, shown))
+    elif flicker:
+      counter['flicker_inputs'] += 1
+      counter['flicker_keys'] += len(flicker)
+      examples[name, 'flicker'].append((keys, flicker[:3]))
+  print(f'{"set":20s} {"inputs":>7s} {"final wrong":>16s} {"flicker inputs":>18s} {"flicker keys":>13s}')
+  for name in sorted(stats):
+    c = stats[name]
+    print(f'{name:20s} {c["inputs"]:7d} {c["final_wrong"]:8d} ({100 * c["final_wrong"] / c["inputs"]:5.2f}%)'
+          f' {c["flicker_inputs"]:9d} ({100 * c["flicker_inputs"] / c["inputs"]:5.2f}%)'
+          f' {100 * c["flicker_keys"] / max(1, c["keys"]):11.2f}%')
+  if '--examples' in sys.argv:
+    for key in sorted(examples):
+      print(key, len(examples[key]))
+      for example in examples[key][:12]:
+        print('   ', example)
+
+
+if __name__ == '__main__':
+  main()

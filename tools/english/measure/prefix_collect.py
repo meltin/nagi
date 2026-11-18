@@ -9,6 +9,7 @@ prefix appears. Sizes can be set with NAGI_WORDS, NAGI_MIXED (inputs per set).
 """
 import os
 import random
+import subprocess
 import sys
 
 import candidates
@@ -16,8 +17,54 @@ import collect
 import romaji
 
 
+JSUT_URL = ('https://raw.githubusercontent.com/sarulab-speech/jsut-label/master/'
+            'text_kana/basic5000.yaml')
+CACHE = os.path.expanduser('~/Library/Caches/nagi-english')
+
+
+def spoken_sentences():
+  """Readings of the 5,000 sentences of JSUT basic5000 (CC BY-SA 4.0; downloaded for the
+  measurement, not kept in the repository). They are written as pronounced: the
+  particles は and へ appear as わ and え."""
+  path = os.path.join(CACHE, 'basic5000.yaml')
+  if not os.path.exists(path):
+    os.makedirs(CACHE, exist_ok=True)
+    subprocess.run(['curl', '-fsSL', JSUT_URL, '-o', path], check=True)
+  with open(path, encoding='utf-8') as lines:
+    return [line.split(':', 1)[1].strip() for line in lines if 'kana_level0:' in line]
+
+
+def held_out():
+  """Inputs written by hand for Mozless, another IME by the same author. Never used
+  to choose the rule. Yields (set, keys, display)."""
+  root = os.environ.get('NAGI_HELD_OUT',
+                        os.path.expanduser('~/dev/oss/mozless/src/data/test/english_runs'))
+  if not os.path.isdir(root):
+    return
+  with open(os.path.join(root, 'mixed.tsv'), encoding='utf-8') as lines:
+    for line in lines:
+      fields = line.rstrip('\n').split('\t')
+      if len(fields) == 2 and not line.startswith('#'):
+        yield 'held_out_mixed', fields[0], fields[1]
+  with open(os.path.join(root, 'japanese_sentences.txt'), encoding='utf-8') as lines:
+    for line in lines:
+      keys = line.strip()
+      if keys and not keys.startswith('#'):
+        yield 'held_out_japanese', keys, romaji.to_kana(keys)
+
+
 def inputs(words, rng):
-  """Yields (set, keys, english) with english = (begin, end) or None."""
+  """Yields (set, keys, display): the keys to type and what should be shown at the end."""
+  for name, keys, english in _generated(words, rng):
+    if english is None:
+      yield name, keys, romaji.to_kana(keys)
+    else:
+      begin, end = english
+      yield name, keys, romaji.to_kana(keys[:begin]) + keys[begin:end] + romaji.to_kana(keys[end:])
+  yield from held_out()
+
+
+def _generated(words, rng):
   for reading in collect.japanese_sentences():
     for style in collect.STYLES:
       keys = romaji.to_romaji(reading, style)
@@ -29,6 +76,19 @@ def inputs(words, rng):
     keys = romaji.to_romaji(reading)
     if keys:
       yield 'japanese_words', keys, None
+  for reading in spoken_sentences():
+    keys = romaji.to_romaji(reading)
+    if keys:
+      yield 'japanese_spoken', keys, None
+  # Words that are common, known to spell checkers for code and in the dictionary.
+  common = sorted(word for word, (size, sources) in words.items()
+                  if size == 35 and sources == 'cd' and len(word) >= 3)
+  for word in common:
+    for carrier in rng.sample(collect.CARRIERS, 4):
+      before, after = carrier.split('{}')
+      keys_before = romaji.to_romaji(before) if before else ''
+      yield ('mixed_common', keys_before + word + romaji.to_romaji(after),
+             (len(keys_before), len(keys_before) + len(word)))
   mixed = []
   for word in collect.english_sample(words, rng):
     for carrier in rng.sample(collect.CARRIERS, 6):
@@ -47,7 +107,7 @@ def main():
   rows = []
   progress = []  # (set, input, keys, typed, begin): an English word being typed
   readings = set()
-  for index, (name, keys, english) in enumerate(inputs(words, rng)):
+  for index, (name, keys, display) in enumerate(inputs(words, rng)):
     for n in range(1, len(keys) + 1):
       prefix = keys[:n]
       if not prefix.isascii() or not prefix.replace('-', 'a').isalpha():
@@ -65,19 +125,19 @@ def main():
         english_reading = romaji.to_kana(body[:begin]) + word + romaji.to_kana(body[end:])
         readings.update((english_reading, romaji.to_kana(word)))
         rows.append((name, index, keys, n, len(tail), begin, end, word, kana, english_reading,
-                     english))
+                     display))
       if not found:
-        rows.append((name, index, keys, n, len(tail), 0, 0, '', kana, '', english))
+        rows.append((name, index, keys, n, len(tail), 0, 0, '', kana, '', display))
   costs = collect.costs_of(readings)
   with open(sys.argv[1], 'w', encoding='utf-8') as out:
-    out.write('set\tinput\tkeys\ttyped\ttail\tbegin\tend\tword\tenglish_begin\tenglish_end\t'
+    out.write('set\tinput\tkeys\ttyped\ttail\tbegin\tend\tword\tdisplay\t'
               'scowl\tsources\treads\tcost_kana\tcost_english\tcost_word\tword_is_prefix\n')
-    for name, index, keys, n, tail, begin, end, word, kana, english_reading, english in rows:
+    for name, index, keys, n, tail, begin, end, word, kana, english_reading, display in rows:
       size, sources = words.get(word, (0, ''))
       word_kana = romaji.to_kana(word) if word else ''
       out.write('\t'.join(map(str, [
           name, index, keys, n, tail, begin, end, word or '-',
-          english[0] if english else -1, english[1] if english else -1, size, sources or '-',
+          display, size, sources or '-',
           int(bool(word) and romaji.reads_as_kana(word)), costs[kana][0],
           costs[english_reading][0] if word else 0, costs[word_kana][0] if word else 0,
           int(costs[word_kana][1]) if word else 0,
