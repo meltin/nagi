@@ -15,6 +15,7 @@
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/flags/flag.h"
 #include "absl/strings/str_split.h"
@@ -33,6 +34,11 @@
 #include "zenz/zenz_client.h"
 
 ABSL_FLAG(bool, zenz, true, "Correct the preview with Zenz.");
+ABSL_FLAG(bool, live, true, "Convert while typing.");
+ABSL_FLAG(bool, english, false, "Automatic input mode.");
+ABSL_FLAG(bool, quiet, false,
+          "Print only the keys and what Enter commits, and read more keys "
+          "from the standard input.");
 ABSL_FLAG(uint32_t, live_delay_msec, 228, "Delay of live conversion.");
 ABSL_FLAG(uint32_t, zenz_delay_msec, 500, "Delay before asking Zenz.");
 ABSL_FLAG(std::string, profile, "",
@@ -149,7 +155,8 @@ int main(int argc, char** argv) {
   Typist typist(*std::move(engine));
 
   mozc::config::Config config = mozc::config::ConfigHandler::DefaultConfig();
-  config.set_use_live_conversion(true);
+  config.set_use_live_conversion(absl::GetFlag(FLAGS_live));
+  config.set_use_automatic_english(absl::GetFlag(FLAGS_english));
   config.set_live_conversion_delay_msec(absl::GetFlag(FLAGS_live_delay_msec));
   config.set_use_conversion_status_indicator(true);
   config.set_use_zenz_correction(absl::GetFlag(FLAGS_zenz));
@@ -157,12 +164,21 @@ int main(int argc, char** argv) {
   typist.SetConfig(config);
   typist.SendKey(SpecialKey(KeyEvent::ON));
 
-  for (int i = 1; i < argc; ++i) {
-    const std::string keys = argv[i];
+  const bool quiet = absl::GetFlag(FLAGS_quiet);
+  std::vector<std::string> inputs(argv + 1, argv + argc);
+  if (quiet) {
+    std::string line;
+    while (std::getline(std::cin, line)) {
+      inputs.push_back(line);
+    }
+  }
+  for (const std::string& keys : inputs) {
     if (keys.starts_with("--")) {
       continue;  // A flag that InitMozc left in argv.
     }
-    std::cout << "== " << keys << std::endl;
+    if (!quiet) {
+      std::cout << "== " << keys << std::endl;
+    }
     Output output;
     int callbacks = 0;
     // "/" is a pause: the delayed callbacks run before the typing goes on.
@@ -171,8 +187,10 @@ int main(int argc, char** argv) {
         KeyEvent key;
         key.set_key_code(c);
         output = typist.SendKey(key);
-        std::cout << "     key  " << StatusName(output) << "\t"
-                  << PreeditText(output) << std::endl;
+        if (!quiet) {
+          std::cout << "     key  " << StatusName(output) << "\t"
+                    << PreeditText(output) << std::endl;
+        }
       }
       const absl::Time last_key = absl::Now();
       std::string shown = PreeditText(output);
@@ -190,13 +208,20 @@ int main(int argc, char** argv) {
           status = now_status;
           const int64_t msec =
               absl::ToInt64Milliseconds(absl::Now() - last_key);
-          std::cout.width(6);
-          std::cout << msec << "ms  " << status << "\t" << shown << std::endl;
+          if (!quiet) {
+            std::cout.width(6);
+            std::cout << msec << "ms  " << status << "\t" << shown
+                      << std::endl;
+          }
         }
       }
     }
 
     output = typist.SendKey(SpecialKey(KeyEvent::ENTER));
+    if (quiet) {
+      std::cout << keys << "\t" << output.result().value() << std::endl;
+      continue;
+    }
     std::cout << "  commit  " << output.result().value() << "  (" << callbacks
               << " callbacks)" << std::endl;
   }

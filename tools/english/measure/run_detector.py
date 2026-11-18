@@ -24,8 +24,8 @@ def english_runs(display):
   return re.findall(r'[a-z]{3,}', display)
 
 
-def main():
-  flags = [arg for arg in sys.argv[1:] if arg.startswith('--') and arg != '--examples']
+def load_inputs():
+  """(set, keys, wanted display) of everything that is measured."""
   words = candidates.load_words()
   # Commas are typed between clauses; the detector looks at letters and "-" only.
   inputs = [(name, keys.replace(',', ''), wanted.replace('、', ''))
@@ -43,6 +43,12 @@ def main():
       if seen[item[0]] <= int(os.environ['NAGI_LIMIT']):
         limited.append(item)
     inputs = limited
+  return inputs
+
+
+def main():
+  flags = [arg for arg in sys.argv[1:] if arg.startswith('--') and arg != '--examples']
+  inputs = load_inputs()
   result = subprocess.run([TOOL, '--words=' + candidates.WORDS_PATH] + flags,
                           input='\n'.join(keys for _, keys, _ in inputs) + '\n',
                           capture_output=True, text=True, check=True)
