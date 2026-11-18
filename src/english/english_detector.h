@@ -72,6 +72,8 @@ class ReadingJudge {
   virtual int Cost(std::string_view reading) const = 0;
   // True if a longer dictionary word starts with |reading|.
   virtual bool IsPrefixOfWord(std::string_view reading) const = 0;
+  // Where the segments of the best conversion of |reading| end, in bytes.
+  virtual std::vector<size_t> SegmentEnds(std::string_view reading) const = 0;
 };
 
 // Finds the English words in keys typed in a romaji composition.
@@ -108,6 +110,8 @@ class EnglishDetector {
     // Added to a candidate's score for each of its letters.
     int letter_bonus = 2000;
     size_t max_runs = 4;
+    // With the previous result, only this many keys at the end are looked at.
+    size_t window = 40;
   };
 
   EnglishDetector(const EnglishWords* words, const RomajiReader* reader,
@@ -120,7 +124,12 @@ class EnglishDetector {
   // letters are looked at. While the user is typing, consonants at the end may
   // still become a syllable ("git" may go on to "gita"). With |end_of_input|,
   // before converting or committing, they cannot, and are English or unread.
-  std::vector<Run> Detect(std::string_view keys, bool end_of_input) const;
+  //
+  // |previous| is what Detect() returned one key earlier. With it, only the
+  // last keys are looked at again and runs well before the end stay as they
+  // are, which keeps a long composition fast and its beginning stable.
+  std::vector<Run> Detect(std::string_view keys, bool end_of_input,
+                          const std::vector<Run>* previous = nullptr) const;
 
   // What the composition shows for |keys| with |runs|: kana, the runs as
   // typed, and letters that are not read yet in full width.
@@ -131,6 +140,7 @@ class EnglishDetector {
                       bool end_of_input) const;
 
  private:
+  std::vector<Run> DetectAll(std::string_view keys, bool end_of_input) const;
   int Cost(const std::string& reading) const;
 
   const EnglishWords* words_;

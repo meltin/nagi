@@ -35,6 +35,11 @@ class ConverterJudge : public mozc::english::ReadingJudge {
   bool IsPrefixOfWord(std::string_view reading) const override {
     return converter_->IsReadingPrefixOfWord(reading);
   }
+  std::vector<size_t> SegmentEnds(std::string_view reading) const override {
+    std::vector<size_t> ends;
+    converter_->GetReadingCost(reading, &ends);
+    return ends;
+  }
 
  private:
   const mozc::converter::Converter* converter_;
@@ -85,11 +90,14 @@ int main(int argc, char** argv) {
   int64_t key_count = 0;
   while (std::getline(std::cin, keys)) {
     std::cout << keys;
+    std::vector<mozc::english::EnglishDetector::Run> runs;
     for (size_t typed = 1; typed <= keys.size(); ++typed) {
       const std::string_view prefix = std::string_view(keys).substr(0, typed);
       const auto start = std::chrono::steady_clock::now();
       // The last display is what is converted or committed.
-      const auto runs = detector.Detect(prefix, typed == keys.size());
+      // As the session does: every key continues from the previous result.
+      const std::vector<mozc::english::EnglishDetector::Run> previous = runs;
+      runs = detector.Detect(prefix, typed == keys.size(), &previous);
       const int64_t micros =
           std::chrono::duration_cast<std::chrono::microseconds>(
               std::chrono::steady_clock::now() - start)

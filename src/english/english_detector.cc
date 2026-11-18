@@ -203,6 +203,42 @@ std::string EnglishDetector::Display(std::string_view keys,
 }
 
 std::vector<EnglishDetector::Run> EnglishDetector::Detect(
+    std::string_view keys, bool end_of_input,
+    const std::vector<Run>* previous) const {
+  if (previous == nullptr || keys.size() <= options_.window) {
+    return DetectAll(keys, end_of_input);
+  }
+  // Keep the runs that ended before the window, and look again at the rest,
+  // starting where a syllable starts.
+  size_t target = keys.size() - options_.window;
+  std::vector<Run> runs;
+  for (const Run& run : *previous) {
+    if (run.end <= target) {
+      runs.push_back(run);
+    } else {
+      // A run across the edge of the window is looked at again as a whole.
+      target = std::min(target, run.begin);
+      break;
+    }
+  }
+  const size_t origin = runs.empty() ? 0 : runs.back().end;
+  size_t begin = target;
+  while (begin < keys.size()) {
+    const std::string head =
+        reader_->ToKana(keys.substr(origin, begin - origin), false);
+    if (head.empty() ||
+        !absl::ascii_isalpha(static_cast<unsigned char>(head.back()))) {
+      break;
+    }
+    ++begin;
+  }
+  for (const Run& run : DetectAll(keys.substr(begin), end_of_input)) {
+    runs.push_back(Run{run.begin + begin, run.end + begin});
+  }
+  return runs;
+}
+
+std::vector<EnglishDetector::Run> EnglishDetector::DetectAll(
     std::string_view keys, bool end_of_input) const {
   std::vector<Run> runs;
   if (keys.size() < kMinWordLength || !IsLowerLetters(keys)) {
@@ -234,6 +270,30 @@ std::vector<EnglishDetector::Run> EnglishDetector::Detect(
 
   while (runs.size() < options_.max_runs) {
     const int cost_now = cost_of(runs);
+    // Where the converter cuts the reading as it is now. A word of Japanese
+    // is not cut by it, so an English word does not begin inside a segment:
+    // "rase" is not a word in "しらせ".
+    // A run may have taken the consonants waiting at the end.
+    const bool run_takes_end = !runs.empty() && runs.back().end == keys.size();
+    const std::string reading_now =
+        Reading(run_takes_end ? keys : keys.substr(0, body_end), runs,
+                /*end_of_input=*/true);
+    const std::vector<size_t> segment_ends = judge_->SegmentEnds(reading_now);
+    const auto at_segment_edge = [&](size_t key_offset) {
+      std::vector<Run> before;
+      for (const Run& run : runs) {
+        if (run.end <= key_offset) {
+          before.push_back(run);
+        }
+      }
+      const size_t offset =
+          Reading(keys.substr(0, std::min(key_offset, keys.size())), before,
+                  /*end_of_input=*/true)
+              .size();
+      return offset == 0 || offset >= reading_now.size() ||
+             std::find(segment_ends.begin(), segment_ends.end(), offset) !=
+                 segment_ends.end();
+    };
     int best_delta = 0;
     Run best;
     bool found = false;
@@ -246,6 +306,14 @@ std::vector<EnglishDetector::Run> EnglishDetector::Detect(
            ++begin) {
         if (!reader_->ReadsAsKana(
                 keys.substr(stretch_begin, begin - stretch_begin))) {
+          continue;
+        }
+        // An "n" just before is "ん" only if a vowel does not follow: "na" in
+        // "nameraka" is "な", not "ん" and a word that begins with "a".
+        if (begin > stretch_begin && keys[begin - 1] == 'n' &&
+            (begin - stretch_begin < 2 || keys[begin - 2] != 'n') &&
+            std::string_view("aiueoy").find(keys[begin]) !=
+                std::string_view::npos) {
           continue;
         }
         const size_t max_end = std::min(stretch_end, begin + kMaxWordLength);
@@ -280,6 +348,19 @@ std::vector<EnglishDetector::Run> EnglishDetector::Detect(
           with.insert(with.begin() + index, Run{begin, end});
           const int delta = cost_now - cost_of(with);
           const bool readable = reader_->ReadsAsKana(word);
+          // While the keys around the word read as kana, Japanese is
+          // possible, and the word must begin where a Japanese word could
+          // end. A readable word must also end at such a place.
+          const size_t kana_end = last ? body_end : stretch_end;
+          const bool stretch_reads =
+              kana_end >= stretch_begin &&
+              reader_->ReadsAsKana(
+                  keys.substr(stretch_begin, kana_end - stretch_begin));
+          if (stretch_reads &&
+              (!at_segment_edge(begin) ||
+               (readable && end <= body_end && !at_segment_edge(end)))) {
+            continue;
+          }
           bool english = false;
           if (!readable) {
             english = delta > -options_.unreadable_margin;

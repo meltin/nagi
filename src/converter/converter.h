@@ -176,7 +176,10 @@ class Converter final : public ConverterInterface {
   // reading is hiragana, possibly with ASCII letters. Rewriters and the user's
   // history do not take part. Returns a negative value when it cannot be
   // converted.
-  int GetReadingCost(absl::string_view reading) const;
+  // With |segment_ends|, also returns where each segment of that conversion
+  // ends in |reading|, in bytes.
+  int GetReadingCost(absl::string_view reading,
+                     std::vector<size_t>* segment_ends = nullptr) const;
 
   // Nagi: true if a word of the system dictionary has a reading that starts
   // with |reading| and is longer, so the user may still be typing that word.

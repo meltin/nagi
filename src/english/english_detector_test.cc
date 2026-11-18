@@ -34,6 +34,22 @@ class FakeJudge : public ReadingJudge {
   bool IsPrefixOfWord(std::string_view reading) const override {
     return prefixes_.contains(std::string(reading));
   }
+  // Every kana is its own segment, unless the test says otherwise.
+  std::vector<size_t> SegmentEnds(std::string_view reading) const override {
+    const auto it = segment_ends_.find(reading);
+    if (it != segment_ends_.end()) {
+      return it->second;
+    }
+    std::vector<size_t> ends;
+    for (size_t i = 1; i <= reading.size(); ++i) {
+      if (i == reading.size() ||
+          (static_cast<unsigned char>(reading[i]) & 0xC0) != 0x80) {
+        ends.push_back(i);
+      }
+    }
+    return ends;
+  }
+  std::map<std::string, std::vector<size_t>, std::less<>> segment_ends_;
 
   std::map<std::string, int, std::less<>> costs_;
   std::map<std::string, bool> prefixes_;
@@ -106,6 +122,20 @@ TEST_F(EnglishDetectorTest, JapaneseStaysKana) {
   EXPECT_EQ(Show("git"), "ぎｔ");
 }
 
+TEST_F(EnglishDetectorTest, WordDoesNotBeginInsideASyllable) {
+  words_.Add("amer", {.scowl_size = 35});
+  // "na" is one syllable: "amer" does not begin after its "n".
+  EXPECT_EQ(Show("namerakana", true), "なめらかな");
+}
+
+TEST_F(EnglishDetectorTest, WordDoesNotBeginInsideAJapaneseWord) {
+  words_.Add("rase", {.scowl_size = 35});
+  judge_.costs_["らせ"] = 20000;
+  // The converter keeps "しらせ" in one piece, so "rase" is inside a word.
+  judge_.segment_ends_["しらせがとどいた"] = {9, 12, 24};
+  EXPECT_EQ(Show("sirasegatodoita", true), "しらせがとどいた");
+}
+
 TEST_F(EnglishDetectorTest, EndOfInputDecidesWaitingConsonants) {
   // Nothing more is coming: "git" cannot end in a syllable.
   EXPECT_EQ(Show("git", true), "git");
@@ -125,6 +155,26 @@ TEST_F(EnglishDetectorTest, ReadableWordNeedsMoreThanBeingInTheList) {
   // Not while a longer Japanese word may be coming.
   judge_.prefixes_["ちめ"] = true;
   EXPECT_EQ(Show("time"), "ちめ");
+}
+
+TEST_F(EnglishDetectorTest, LongCompositionKeepsEarlierRuns) {
+  const RomajiReader reader(&table_);
+  const EnglishDetector detector(&words_, &reader, &judge_);
+  std::string keys = "kyouhagoogledekensaku";
+  std::vector<EnglishDetector::Run> runs;
+  // Type a long tail of Japanese after the English word, key by key.
+  const std::string tail = "siteatodekakuninsitekarakaerimasu"
+                           "sorekaramouitidokakuninsimasu";
+  runs = detector.Detect(keys, false, nullptr);
+  for (const char c : tail) {
+    keys.push_back(c);
+    const std::vector<EnglishDetector::Run> previous = runs;
+    runs = detector.Detect(keys, false, &previous);
+  }
+  ASSERT_GT(keys.size(), 60);
+  ASSERT_FALSE(runs.empty());
+  // "google" is far outside the window by now, and still English.
+  EXPECT_EQ(runs.front(), (EnglishDetector::Run{6, 12}));
 }
 
 TEST_F(EnglishDetectorTest, OnlyLowerCaseLetters) {
