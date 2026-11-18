@@ -107,8 +107,10 @@ zsh tools/nagi_dev_install.sh
 |---|---|
 | 入力中 | 読みが短く、まだ変換の対象になっていない |
 | Mozc | Mozc が変換した、または打ち終わりを待って変換するところ。Zenz が同じ結果を返したときも、ここで終わる |
-| Zenz… | Zenz に問い合わせていて、結果を待っている。問い合わせるまでの待ち時間のあいだは Mozc のまま |
+| Zenz… | Zenz に問い合わせる予定、または問い合わせ中。待ち時間のあいだも出る |
 | Zenz | Zenz が Mozc の変換を書き換えた |
+
+Space や Tab で候補を選んでいるあいだは、インジケータを出しません。表示の決まりは Mozkey に合わせています。
 
 ![明るい外観](images/indicator_light.png) ![暗い外観](images/indicator_dark.png)
 

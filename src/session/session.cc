@@ -935,8 +935,9 @@ void Session::DecorateLivePreview(commands::Command* command) {
   const bool zenz_in_progress =
       zenz_state_ == kZenzWaiting || zenz_state_ == kZenzRequested;
   if (context_->GetConfig().use_conversion_status_indicator()) {
-    // Not while waiting to ask: until then the text is only the engine's.
-    if (zenz_state_ == kZenzRequested) {
+    // As in Mozkey, from the moment the request is planned, not only while
+    // it runs: the text on screen may still change.
+    if (zenz_in_progress) {
       output->set_conversion_status(
           commands::Output::CONVERSION_STATUS_ZENZ_PENDING);
     } else if (zenz_state_ == kZenzApplied) {
@@ -3236,9 +3237,11 @@ void Session::OutputMode(commands::Command* command) const {
   if (context_->GetConfig().use_conversion_status_indicator()) {
     if (context_->state() == ImeContext::COMPOSITION) {
       output->set_conversion_status(commands::Output::CONVERSION_STATUS_READING);
-    } else if (context_->state() == ImeContext::CONVERSION) {
+    } else if (IsLiveConversion()) {
       output->set_conversion_status(commands::Output::CONVERSION_STATUS_ENGINE);
     }
+    // No status for a conversion the user drives with Space or Tab: the
+    // candidate list has the attention there, as in Mozkey.
   }
 }
 

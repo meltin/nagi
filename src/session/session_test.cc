@@ -10740,8 +10740,9 @@ TEST_F(SessionTest, ConversionStatusFollowsTheState) {
 
   command.Clear();
   session.Convert(&command);
+  // A conversion the user asked for has no status.
   EXPECT_EQ(command.output().conversion_status(),
-            commands::Output::CONVERSION_STATUS_ENGINE);
+            commands::Output::CONVERSION_STATUS_NONE);
 
   command.Clear();
   session.Commit(&command);
@@ -11350,7 +11351,7 @@ TEST_F(ZenzSessionTest, SpaceGoesBackToTheEngineConversion) {
   SendKey("Space", &session, &command);
   EXPECT_FALSE(command.output().live_conversion());
   EXPECT_EQ(command.output().conversion_status(),
-            commands::Output::CONVERSION_STATUS_ENGINE);
+            commands::Output::CONVERSION_STATUS_NONE);
   // The Zenz text is gone: the candidates are the engine's.
   EXPECT_NE(GetComposition(command), "");
   for (const commands::Preedit::Segment& segment :
@@ -11373,9 +11374,9 @@ TEST_F(ZenzSessionTest, WaitsForTheConfiguredDelay) {
   EXPECT_EQ(zenz_client.request_count_, 0);
   ASSERT_TRUE(command.output().has_callback());
   EXPECT_EQ(command.output().callback().delay_millisec(), 50);
-  // Zenz has not been asked yet, so the status does not say so.
+  // Zenz has not been asked yet, but the status already says it will be.
   EXPECT_EQ(command.output().conversion_status(),
-            commands::Output::CONVERSION_STATUS_ENGINE);
+            commands::Output::CONVERSION_STATUS_ZENZ_PENDING);
 
   command = SendCallback(command, &session);
   EXPECT_EQ(zenz_client.request_count_, 1);
