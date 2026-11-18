@@ -174,6 +174,24 @@ TEST_F(EnglishDetectorTest, LongCompositionKeepsEarlierRuns) {
   EXPECT_EQ(runs.front(), (EnglishDetector::Run{6, 12}));
 }
 
+TEST_F(EnglishDetectorTest, LongCompositionKeepsARunAfterN) {
+  const RomajiReader reader(&table_);
+  const EnglishDetector detector(&words_, &reader, &judge_);
+  // "nn" is "ん", and the word begins right after it.
+  std::string keys = "jikanngoogledekensaku";
+  std::vector<EnglishDetector::Run> runs = detector.Detect(keys, false);
+  ASSERT_FALSE(runs.empty());
+  const EnglishDetector::Run word = runs.front();
+  for (const char c : std::string("siteatodekakuninsitekarakaerimasu"
+                                  "sorekaramouitidokakuninsimasu")) {
+    keys.push_back(c);
+    const std::vector<EnglishDetector::Run> previous = runs;
+    runs = detector.Detect(keys, false, &previous);
+    ASSERT_FALSE(runs.empty()) << keys;
+    ASSERT_EQ(runs.front(), word) << keys;
+  }
+}
+
 TEST_F(EnglishDetectorTest, OnlyLowerCaseLetters) {
   // Capitals and digits are the session's business: the composer already
   // switches to ASCII on a capital.

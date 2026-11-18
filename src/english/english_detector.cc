@@ -215,7 +215,9 @@ std::vector<EnglishDetector::Run> EnglishDetector::Detect(
   // True if the window starts where a word is known to begin.
   bool starts_at_word = false;
   for (const Run& run : *previous) {
-    if (run.end <= target) {
+    // A run the user has typed well past is settled. Looking at it again with
+    // less in front of it every key only risks losing it.
+    if (run.end <= target || run.end + options_.settled <= keys.size()) {
       runs.push_back(run);
     } else {
       // A run across the edge of the window is looked at again as a whole.
@@ -226,7 +228,7 @@ std::vector<EnglishDetector::Run> EnglishDetector::Detect(
     }
   }
   const size_t origin = runs.empty() ? 0 : runs.back().end;
-  size_t begin = target;
+  size_t begin = std::max(target, origin);
   while (begin < keys.size()) {
     const std::string head =
         reader_->ToKana(keys.substr(origin, begin - origin), false);

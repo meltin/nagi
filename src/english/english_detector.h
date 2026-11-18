@@ -120,6 +120,8 @@ class EnglishDetector {
     size_t max_runs = 4;
     // With the previous result, only this many keys at the end are looked at.
     size_t window = 40;
+    // A run that ended this many keys ago is not looked at again.
+    size_t settled = 12;
   };
 
   EnglishDetector(const EnglishWords* words, const RomajiReader* reader,
