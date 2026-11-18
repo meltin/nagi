@@ -56,6 +56,8 @@
 #include "composer/table.h"
 #include "engine/engine_converter_interface.h"
 #include "engine/engine_interface.h"
+#include "english/automatic_english.h"
+#include "english/english_detector.h"
 #include "protocol/commands.pb.h"
 #include "protocol/config.pb.h"
 #include "session/ime_context.h"
@@ -626,6 +628,50 @@ void Session::LeaveLiveConversion(bool keep_converted) {
   context_->mutable_converter()->Cancel();
   SetSessionState(ImeContext::COMPOSITION, context_.get());
   EndLiveConversion();
+}
+
+void Session::ApplyAutomaticEnglish(bool end_of_input) {
+  composer::Composer* composer = context_->mutable_composer();
+  const ConverterInterface* converter = context_->converter().GetConverter();
+  const std::string keys = composer->GetRawString();
+  // Only plain romaji typed at the end of the composition. Anything else,
+  // such as a digit or a capital, leaves the composition as it is.
+  if (!context_->GetConfig().use_automatic_english() ||
+      context_->GetConfig().preedit_method() != config::Config::ROMAN ||
+      context_->state() != ImeContext::COMPOSITION || converter == nullptr ||
+      composer->table() == nullptr ||
+      composer->GetInputMode() != transliteration::HIRAGANA ||
+      composer->GetInputFieldType() == commands::Context::PASSWORD ||
+      composer->GetCursor() != composer->GetLength() ||
+      !std::all_of(keys.begin(), keys.end(), [](char c) {
+        return absl::ascii_islower(static_cast<unsigned char>(c)) || c == '-';
+      })) {
+    english_keys_.clear();
+    return;
+  }
+  const english::RomajiReader reader(composer->table());
+  const english::EnglishWords& words = english::GetEnglishWords(reader);
+  if (words.size() == 0) {
+    return;  // Built without the word list.
+  }
+  const english::ConverterJudge judge(converter);
+  const english::EnglishDetector detector(&words, &reader, &judge);
+  // The last result helps only when the keys are the same or one longer.
+  // After an edit it may point past the end of them.
+  const bool continues = !english_keys_.empty() &&
+                         keys.size() <= english_keys_.size() + 1 &&
+                         absl::StartsWith(keys, english_keys_);
+  std::vector<english::EnglishDetector::Run> runs =
+      detector.Detect(keys, end_of_input, continues ? &english_runs_ : nullptr);
+  // After an edit the composition may hold part of a word typed in English.
+  const bool changed = continues ? runs != english_runs_
+                                 : !runs.empty() || !english_runs_.empty();
+  english_keys_ = keys;
+  english_runs_ = std::move(runs);
+  if (changed) {
+    composer->EditErase();
+    english::TypeWithRuns(keys, english_runs_, composer);
+  }
 }
 
 void Session::ClearKeptConversion() {
@@ -2087,6 +2133,7 @@ bool Session::InsertCharacter(commands::Command* command) {
   }
 
   SetSessionState(ImeContext::COMPOSITION, context_.get());
+  ApplyAutomaticEnglish(/*end_of_input=*/false);
   if (CanStartAutoConversion(key)) {
     return Convert(command);
   }
@@ -2333,6 +2380,7 @@ bool Session::CommitInternal(commands::Command* command,
 }
 
 bool Session::Commit(commands::Command* command) {
+  ApplyAutomaticEnglish(/*end_of_input=*/true);
   // Commit what is displayed, also when the request is not a key.
   if (IsLiveConversion() && !zenz_preview_.empty()) {
     return CommitZenzPreview(command);
@@ -2872,6 +2920,7 @@ bool Session::DeleteCandidateFromHistory(commands::Command* command) {
 
 bool Session::Convert(commands::Command* command) {
   command->mutable_output()->set_consumed(true);
+  ApplyAutomaticEnglish(/*end_of_input=*/true);
   const std::string composition = context_->composer().GetQueryForConversion();
   // As in Mozkey: only without live conversion, and only for the conversion
   // that starts from the reading.

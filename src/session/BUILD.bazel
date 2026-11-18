@@ -66,6 +66,8 @@ mozc_cc_library(
         "//engine:engine_interface",
         "//protocol:commands_cc_proto",
         "//protocol:config_cc_proto",
+        "//english:automatic_english",
+        "//english:english_detector",
         "//transliteration",
         "//zenz:zenz_client",
         "//zenz:zenz_feedback",

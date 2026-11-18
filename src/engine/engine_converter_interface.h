@@ -45,6 +45,7 @@
 #include "transliteration/transliteration.h"
 
 namespace mozc {
+class ConverterInterface;  // Nagi
 namespace engine {
 
 struct ConversionPreferences {
@@ -84,6 +85,9 @@ class EngineConverterInterface {
   // Nagi: the values of the selected candidates that come from the user
   // dictionary, for the conversion in progress. Empty when not converting.
   virtual std::vector<std::string> GetSelectedUserDictionaryValues() const = 0;
+
+  // Nagi: the converter behind this, for judging readings. May be nullptr.
+  virtual const ConverterInterface* GetConverter() const { return nullptr; }
 
   // Indicate if the conversion session is active or not.  In general,
   // Convert functions make it active and Cancel, Reset and Commit

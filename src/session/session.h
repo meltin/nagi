@@ -42,6 +42,7 @@
 #include "composer/composer.h"
 #include "composer/table.h"
 #include "engine/engine_interface.h"
+#include "english/english_detector.h"
 #include "protocol/commands.pb.h"
 #include "protocol/config.pb.h"
 #include "session/ime_context.h"
@@ -324,6 +325,11 @@ class Session {
   LiveSpan kept_zenz_span_;
   std::vector<LiveSpan> kept_engine_spans_;
 
+  // Nagi automatic input mode: the keys looked at last, and the English words
+  // found in them, which the composition shows as typed.
+  std::string english_keys_;
+  std::vector<english::EnglishDetector::Run> english_runs_;
+
   std::unique_ptr<ImeContext> CreateContext(
       const EngineInterface& engine) const;
 
@@ -425,6 +431,11 @@ class Session {
   // composition, for edits that continue the reading.
   void LeaveLiveConversion(bool keep_converted = false);
   void ClearKeptConversion();
+  // Nagi automatic input mode: finds the English words in the keys of the
+  // composition and shows them as typed. While typing, consonants at the end
+  // may still become kana; with |end_of_input|, before converting or
+  // committing, they cannot.
+  void ApplyAutomaticEnglish(bool end_of_input);
   // The converted head that still matches the kana being typed, and how many
   // bytes of that kana it stands for. False when nothing can be kept.
   bool GetKeptConversion(std::string* value, size_t* raw_size) const;

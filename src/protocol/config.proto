@@ -389,6 +389,10 @@ message Config {
   optional bool show_candidate_window_on_initial_conversion = 2006
       [default = false];
 
+  // Automatic input mode: in a romaji composition, shows the English words
+  // the user types as typed instead of reading them as kana.
+  optional bool use_automatic_english = 2007 [default = false];
+
   //////////////////////////////////////////////////////////////
   //
   // Cloud (300-319)

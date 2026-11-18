@@ -67,6 +67,9 @@ class EngineConverter : public EngineConverterInterface {
   // Checks if the current state is in the state bitmap.
   bool CheckState(States) const override;
   std::vector<std::string> GetSelectedUserDictionaryValues() const override;
+  const ConverterInterface* GetConverter() const override {
+    return converter_.get();
+  }
 
   // Indicates if the conversion session is active or not.  In general,
   // Convert functions make it active and Cancel, Reset and Commit
