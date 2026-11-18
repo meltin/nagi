@@ -48,7 +48,7 @@ mozc_cc_test(
 
 mozc_embed_file(
     name = "gen_english_words",
-    srcs = ["//data/english_nagi:english_words"],
+    srcs = ["//data/english_nagi:english_words.tsv"],
     out = "english_words.inc",
     var_name = "kEnglishWords",
 )

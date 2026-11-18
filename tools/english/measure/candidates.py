@@ -10,7 +10,7 @@ import os
 import romaji
 
 WORDS_PATH = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'src', 'data',
-                          'english_nagi', 'generated', 'english_words.tsv')
+                          'english_nagi', 'english_words.tsv')
 MIN_LENGTH = 3
 MAX_LENGTH = 24
 
