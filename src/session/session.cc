@@ -44,6 +44,7 @@
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/ascii.h"
+#include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "base/clock.h"
@@ -450,6 +451,10 @@ bool Session::SendCommand(commands::Command* command) {
     // The composition is over. The same reading may be converted next time.
     live_conversion_cancelled_key_.clear();
   }
+  if (context_->state() != ImeContext::COMPOSITION && !IsLiveConversion()) {
+    // Committed, cancelled, or taken over by an ordinary conversion.
+    ClearKeptConversion();
+  }
   MaybeSetUndoStatus(command);
   return result;
 }
@@ -593,6 +598,10 @@ bool Session::SendKey(commands::Command* command) {
     // The composition is over. The same reading may be converted next time.
     live_conversion_cancelled_key_.clear();
   }
+  if (context_->state() != ImeContext::COMPOSITION && !IsLiveConversion()) {
+    // Committed, cancelled, or taken over by an ordinary conversion.
+    ClearKeptConversion();
+  }
   if (result) {
     MaybeScheduleLiveConversion(command);
   }
@@ -605,10 +614,101 @@ bool Session::IsLiveConversion() const {
          context_->state() == ImeContext::CONVERSION;
 }
 
-void Session::LeaveLiveConversion() {
+void Session::LeaveLiveConversion(bool keep_converted) {
+  ClearKeptConversion();
+  if (keep_converted) {
+    if (!zenz_preview_.empty()) {
+      kept_zenz_span_ = {live_conversion_raw_preedit_, zenz_preview_};
+    }
+    kept_engine_spans_ = live_engine_spans_;
+  }
   context_->mutable_converter()->Cancel();
   SetSessionState(ImeContext::COMPOSITION, context_.get());
   EndLiveConversion();
+}
+
+void Session::ClearKeptConversion() {
+  kept_zenz_span_ = LiveSpan();
+  kept_engine_spans_.clear();
+}
+
+bool Session::GetKeptConversion(std::string* value, size_t* raw_size) const {
+  value->clear();
+  *raw_size = 0;
+  const composer::Composer& composer = context_->composer();
+  if (!context_->GetConfig().use_live_conversion() ||
+      context_->state() != ImeContext::COMPOSITION ||
+      composer.GetInputMode() != transliteration::HIRAGANA ||
+      composer.GetCursor() != composer.GetLength()) {
+    return false;
+  }
+  const std::string raw = composer.GetStringForPreedit();
+  if (!kept_zenz_span_.raw.empty() &&
+      absl::StartsWith(raw, kept_zenz_span_.raw)) {
+    *value = kept_zenz_span_.value;
+    *raw_size = kept_zenz_span_.raw.size();
+    return true;
+  }
+  // Spans are never split: one that no longer matches goes back to kana,
+  // with everything after it.
+  for (const LiveSpan& span : kept_engine_spans_) {
+    if (!absl::StartsWith(absl::string_view(raw).substr(*raw_size),
+                          span.raw)) {
+      break;
+    }
+    value->append(span.value);
+    *raw_size += span.raw.size();
+  }
+  return *raw_size > 0;
+}
+
+void Session::DecorateKeptConversion(commands::Command* command) const {
+  std::string value;
+  size_t raw_size = 0;
+  commands::Output* output = command->mutable_output();
+  if (!output->has_preedit() || !GetKeptConversion(&value, &raw_size)) {
+    return;
+  }
+  const std::string raw = context_->composer().GetStringForPreedit();
+  commands::Preedit* preedit = output->mutable_preedit();
+  preedit->clear_segment();
+  preedit->clear_highlighted_position();
+  uint32_t length = 0;
+  const auto add_segment = [&](absl::string_view key, absl::string_view text) {
+    commands::Preedit::Segment* segment = preedit->add_segment();
+    segment->set_annotation(commands::Preedit::Segment::UNDERLINE);
+    segment->set_key(key);
+    segment->set_value(text);
+    segment->set_value_length(strings::CharsLen(text));
+    length += segment->value_length();
+  };
+  add_segment(absl::string_view(raw).substr(0, raw_size), value);
+  if (raw_size < raw.size()) {
+    const absl::string_view rest = absl::string_view(raw).substr(raw_size);
+    add_segment(rest, rest);
+  }
+  preedit->set_cursor(length);
+  output->set_live_conversion(true);
+  if (context_->GetConfig().use_conversion_status_indicator()) {
+    output->set_conversion_status(commands::Output::CONVERSION_STATUS_ENGINE);
+  }
+}
+
+bool Session::CommitKeptConversion(commands::Command* command) {
+  std::string value;
+  size_t raw_size = 0;
+  if (!GetKeptConversion(&value, &raw_size)) {
+    return false;
+  }
+  // Commit what is on screen: the kept head and the kana after it.
+  // shortcut: not learned by the engine, like a Zenz correction. Upgrade when
+  // commits of Zenz text are fed to the user history.
+  const std::string reading = context_->composer().GetQueryForConversion();
+  value.append(context_->composer().GetStringForPreedit().substr(raw_size));
+  command->mutable_output()->set_consumed(true);
+  ClearKeptConversion();
+  CommitStringDirectly(reading, value, command);
+  return true;
 }
 
 void Session::EndLiveConversion() {
@@ -629,11 +729,11 @@ bool Session::SendKeyLiveConversionState(commands::Command* command) {
   keymap::CompositionState::Commands composition_command;
   if (keymap->GetCommandComposition(key, &composition_command)) {
     if (composition_command == keymap::CompositionState::BACKSPACE) {
-      LeaveLiveConversion();
+      LeaveLiveConversion(/*keep_converted=*/true);
       return Backspace(command);
     }
     if (composition_command == keymap::CompositionState::DEL) {
-      LeaveLiveConversion();
+      LeaveLiveConversion(/*keep_converted=*/true);
       return Delete(command);
     }
   }
@@ -690,10 +790,8 @@ void Session::MaybeScheduleLiveConversion(commands::Command* command) {
       composer.GetLength() < config.live_conversion_min_key_length()) {
     return;
   }
-  // Wait while a romaji sequence is still open, as in "sy" or "あいうk".
   const std::string reading = composer.GetQueryForConversion();
-  if (reading.empty() ||
-      absl::ascii_isalpha(static_cast<unsigned char>(reading.back()))) {
+  if (reading.empty()) {
     return;
   }
   if (!live_conversion_cancelled_key_.empty()) {
@@ -701,6 +799,18 @@ void Session::MaybeScheduleLiveConversion(commands::Command* command) {
       return;
     }
     live_conversion_cancelled_key_.clear();
+  }
+  // The engine converts this reading as soon as the typing pauses. As in
+  // Mozkey, the status says so from here, and "reading" is left for what is
+  // too short to convert. An open romaji sequence does not change that, or
+  // the status would flicker on every consonant.
+  if (config.use_conversion_status_indicator()) {
+    command->mutable_output()->set_conversion_status(
+        commands::Output::CONVERSION_STATUS_ENGINE);
+  }
+  // Wait while a romaji sequence is still open, as in "sy" or "あいうk".
+  if (absl::ascii_isalpha(static_cast<unsigned char>(reading.back()))) {
+    return;
   }
   if (config.use_zenz_correction()) {
     // Load the model while the user is still typing the first words.
@@ -733,6 +843,7 @@ bool Session::ApplyLiveConversion(commands::Command* command) {
   // Read these before the state changes. The reading is what Zenz converts,
   // and converting drops the suggestions that typing left on screen.
   const std::string reading = context_->composer().GetQueryForConversion();
+  const std::string raw_preedit = context_->composer().GetStringForPreedit();
   commands::Output suggestion_output;
   if (context_->converter().CheckState(EngineConverterInterface::SUGGESTION)) {
     context_->converter().FillOutput(context_->composer(), &suggestion_output);
@@ -747,6 +858,9 @@ bool Session::ApplyLiveConversion(commands::Command* command) {
   live_conversion_active_ = true;
   live_conversion_reading_ = reading;
   live_conversion_engine_text_.clear();
+  live_conversion_raw_preedit_ = raw_preedit;
+  live_engine_spans_.clear();
+  ClearKeptConversion();
   if (suggestion_output.candidate_window().candidate_size() > 0) {
     live_suggestion_window_ = suggestion_output.candidate_window();
   }
@@ -782,6 +896,27 @@ void Session::DecorateLivePreview(commands::Command* command) {
       segment.set_annotation(commands::Preedit::Segment::UNDERLINE);
       length += segment.value_length();
       engine_text += segment.value();
+    }
+    if (live_engine_spans_.empty() && zenz_preview_.empty()) {
+      // Map each segment back to the kana it replaced, by its number of
+      // characters. The segment keys cannot be used as they are: the reading
+      // for conversion differs from the kana on screen ("ｎ" becomes "ん").
+      absl::string_view rest = live_conversion_raw_preedit_;
+      for (const commands::Preedit::Segment& segment : preedit->segment()) {
+        const absl::string_view raw =
+            Util::Utf8SubString(rest, 0, strings::CharsLen(segment.key()));
+        if (raw.empty()) {
+          break;
+        }
+        live_engine_spans_.push_back(
+            {std::string(raw), std::string(segment.value())});
+        rest.remove_prefix(raw.size());
+      }
+      if (!rest.empty() ||
+          live_engine_spans_.size() !=
+              static_cast<size_t>(preedit->segment_size())) {
+        live_engine_spans_.clear();
+      }
     }
     live_conversion_engine_text_ = std::move(engine_text);
     if (!zenz_preview_.empty()) {
@@ -1859,9 +1994,10 @@ bool Session::InsertCharacter(commands::Command* command) {
 
   command->mutable_output()->set_consumed(true);
 
-  // Typing on a live conversion preview continues the reading.
+  // Typing on a live conversion preview continues the reading, and what is
+  // already converted stays on screen.
   if (IsLiveConversion()) {
-    LeaveLiveConversion();
+    LeaveLiveConversion(/*keep_converted=*/true);
   }
 
   // Handle shortcut keys selecting a candidate from a list.
@@ -2153,6 +2289,9 @@ bool Session::Commit(commands::Command* command) {
   // Commit what is displayed, also when the request is not a key.
   if (IsLiveConversion() && !zenz_preview_.empty()) {
     return CommitZenzPreview(command);
+  }
+  if (CommitKeptConversion(command)) {
+    return true;
   }
   return CommitInternal(command,
                         context_->GetRequest().zero_query_suggestion());
@@ -3070,6 +3209,8 @@ void Session::Output(commands::Command* command) {
   // preview, or Enter would commit something else than what is displayed.
   if (IsLiveConversion()) {
     DecorateLivePreview(command);
+  } else {
+    DecorateKeptConversion(command);
   }
 }
 
@@ -3104,6 +3245,7 @@ void Session::OutputComposition(commands::Command* command) const {
   OutputMode(command);
   context_->converter().FillPreedit(
       context_->composer(), command->mutable_output()->mutable_preedit());
+  DecorateKeptConversion(command);
 }
 
 void Session::OutputKey(commands::Command* command) const {

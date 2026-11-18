@@ -10679,7 +10679,8 @@ TEST_F(SessionTest, LiveConversionCallback) {
   command.Clear();
   InsertCharacterChars("a", &session, &command);
   EXPECT_FALSE(command.output().has_result());
-  EXPECT_PREEDIT("あいうえおあ", command);
+  // What is converted stays, and the new kana follows it.
+  EXPECT_PREEDIT("愛上尾あ", command);
   ASSERT_TRUE(command.output().has_callback());
   EXPECT_NE(command.output()
                 .callback()
@@ -11013,6 +11014,110 @@ TEST_F(ZenzSessionTest, ClickedSuggestionIsWhatGetsCommitted) {
   EXPECT_RESULT("アイウエオ会", command);
 }
 
+TEST_F(ZenzSessionTest, TypingKeepsTheConvertedHead) {
+  FakeZenzClient zenz_client;
+  MockEngine engine;
+  SetUpEngine(&engine);
+  Session session(engine);
+  session.SetConfig(ZenzConfig());
+  InitSessionToPrecomposition(&session);
+
+  commands::Command command = TypeAndApplyLiveConversion(&session);
+  command.Clear();
+  InsertCharacterChars("ka", &session, &command);
+  // Not back to "あいうえおか".
+  EXPECT_PREEDIT("愛上尾か", command);
+  EXPECT_TRUE(command.output().live_conversion());
+  EXPECT_EQ(command.output().conversion_status(),
+            commands::Output::CONVERSION_STATUS_ENGINE);
+  // The whole reading is converted again after the delay.
+  EXPECT_EQ(command.output().callback().session_command().type(),
+            commands::SessionCommand::APPLY_LIVE_CONVERSION);
+
+  // A key that does nothing shows the same thing.
+  command.Clear();
+  SendKey("F13", &session, &command);
+  EXPECT_PREEDIT("愛上尾か", command);
+
+  // Enter commits what is on screen.
+  command.Clear();
+  SendKey("Enter", &session, &command);
+  EXPECT_RESULT_AND_KEY("愛上尾か", "あいうえおか", command);
+
+  // The next composition starts from kana again.
+  command.Clear();
+  InsertCharacterChars("aiueoka", &session, &command);
+  EXPECT_PREEDIT("あいうえおか", command);
+}
+
+TEST_F(ZenzSessionTest, TypingKeepsTheZenzCorrection) {
+  FakeZenzClient zenz_client;
+  MockEngine engine;
+  SetUpEngine(&engine);
+  Session session(engine);
+  session.SetConfig(ZenzConfig());
+  InitSessionToPrecomposition(&session);
+
+  commands::Command command = TypeAndApplyLiveConversion(&session);
+  zenz_client.Answer("アイウエオ");
+  command = SendCallback(command, &session);
+  EXPECT_PREEDIT("アイウエオ", command);
+
+  command.Clear();
+  InsertCharacterChars("ka", &session, &command);
+  EXPECT_PREEDIT("アイウエオか", command);
+}
+
+TEST_F(ZenzSessionTest, BackspaceIntoTheConvertedHeadGoesBackToKana) {
+  FakeZenzClient zenz_client;
+  MockEngine engine;
+  SetUpEngine(&engine);
+  Session session(engine);
+  session.SetConfig(ZenzConfig());
+  InitSessionToPrecomposition(&session);
+
+  commands::Command command = TypeAndApplyLiveConversion(&session);
+  command.Clear();
+  SendKey("Backspace", &session, &command);
+  // A converted segment is never cut in the middle.
+  EXPECT_PREEDIT("あいうえ", command);
+}
+
+TEST_F(ZenzSessionTest, CancelledPreviewIsNotKept) {
+  FakeZenzClient zenz_client;
+  MockEngine engine;
+  SetUpEngine(&engine);
+  Session session(engine);
+  session.SetConfig(ZenzConfig());
+  InitSessionToPrecomposition(&session);
+
+  commands::Command command = TypeAndApplyLiveConversion(&session);
+  command.Clear();
+  SendKey("Escape", &session, &command);
+  EXPECT_PREEDIT("あいうえお", command);
+  command.Clear();
+  InsertCharacterChars("ka", &session, &command);
+  EXPECT_PREEDIT("あいうえおか", command);
+}
+
+TEST_F(ZenzSessionTest, OpenRomajiAtTheEndIsNotKeptAsConverted) {
+  FakeZenzClient zenz_client;
+  MockEngine engine;
+  SetUpEngine(&engine);
+  Session session(engine);
+  session.SetConfig(ZenzConfig());
+  InitSessionToPrecomposition(&session);
+
+  // The conversion reads the open "n" as "ん", so its segments do not line
+  // up with the kana on screen. Nothing of it may stay once "n" becomes "な".
+  commands::Command command;
+  InsertCharacterChars("aiueon", &session, &command);
+  command = SendCallback(command, &session);
+  command.Clear();
+  InsertCharacterChars("a", &session, &command);
+  EXPECT_PREEDIT("あいうえおな", command);
+}
+
 TEST_F(ZenzSessionTest, UnboundKeyKeepsPollingWhileZenzIsPending) {
   FakeZenzClient zenz_client;
   MockEngine engine;
@@ -11149,13 +11254,12 @@ TEST_F(ZenzSessionTest, TypingAbandonsThePendingCorrection) {
   commands::Command command;
   InsertCharacterChars("a", &session, &command);
   EXPECT_EQ(zenz_client.cancel_count_, 1);
-  EXPECT_PREEDIT("あいうえおあ", command);
+  EXPECT_PREEDIT("愛上尾あ", command);
 
   // An answer that arrives for the old reading is never shown.
   zenz_client.Answer("アイウエオ");
   command = SendCallback(applied, &session);
-  EXPECT_PREEDIT("あいうえおあ", command);
-  EXPECT_FALSE(command.output().live_conversion());
+  EXPECT_PREEDIT("愛上尾あ", command);
 }
 
 TEST_F(ZenzSessionTest, SpaceGoesBackToTheEngineConversion) {

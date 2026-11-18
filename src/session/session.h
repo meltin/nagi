@@ -309,6 +309,21 @@ class Session {
   // reading. Kept visible next to the preview. Empty when there were none.
   commands::CandidateWindow live_suggestion_window_;
 
+  // One piece of a live conversion: the kana as typed and what it became.
+  struct LiveSpan {
+    std::string raw;
+    std::string value;
+  };
+  // The kana on screen just before the current live conversion replaced it.
+  std::string live_conversion_raw_preedit_;
+  // The engine's conversion of that kana, segment by segment. Empty when the
+  // segments cannot be mapped back to the kana.
+  std::vector<LiveSpan> live_engine_spans_;
+  // What stays converted while the user types on after a live conversion. The
+  // whole Zenz text comes first when it still fits, then the engine segments.
+  LiveSpan kept_zenz_span_;
+  std::vector<LiveSpan> kept_engine_spans_;
+
   std::unique_ptr<ImeContext> CreateContext(
       const EngineInterface& engine) const;
 
@@ -406,7 +421,17 @@ class Session {
   // Handles APPLY_LIVE_CONVERSION.
   bool ApplyLiveConversion(mozc::commands::Command* command);
   // Returns to COMPOSITION from a live conversion without touching the output.
-  void LeaveLiveConversion();
+  // |keep_converted| leaves the converted text on screen as the head of the
+  // composition, for edits that continue the reading.
+  void LeaveLiveConversion(bool keep_converted = false);
+  void ClearKeptConversion();
+  // The converted head that still matches the kana being typed, and how many
+  // bytes of that kana it stands for. False when nothing can be kept.
+  bool GetKeptConversion(std::string* value, size_t* raw_size) const;
+  // Rewrites the preedit of a composition as the kept head and the kana after
+  // it. Does nothing when nothing is kept.
+  void DecorateKeptConversion(mozc::commands::Command* command) const;
+  bool CommitKeptConversion(mozc::commands::Command* command);
   // Forgets the live conversion preview and its Zenz correction.
   void EndLiveConversion();
   // Turns the conversion output into the preview: the engine's conversion,
