@@ -757,8 +757,10 @@ void Session::LearnEnglishFromCommit(
     // Committed as typed, with F10 or the like: the keys are a word. Keys
     // that read as kana and are in no list are more likely a phrase.
     const english::RomajiReader reader(context_->composer().table());
-    if (text == keys && (!reader.ReadsAsKana(keys) ||
-                         english::GetEnglishWords(reader).Find(keys))) {
+    // Half-width letters only: "ｔｈｘ" is what unread keys look like.
+    if (absl::AsciiStrToLower(committed) == keys &&
+        (!reader.ReadsAsKana(keys) ||
+         english::GetEnglishWords(reader).Find(keys))) {
       english::LearnEnglishWord(keys, /*english=*/true);
     }
     return;
