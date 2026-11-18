@@ -53,6 +53,7 @@
 #include "config/character_form_manager.h"
 #include "config/config_handler.h"
 #include "engine/engine_interface.h"
+#include "english/english_memory.h"
 #include "protocol/commands.pb.h"
 #include "protocol/config.pb.h"
 #include "protocol/engine_builder.pb.h"
@@ -248,6 +249,7 @@ bool SessionHandler::ReloadAndWait(commands::Command* command) {
 bool SessionHandler::ClearUserHistory(commands::Command* command) {
   MOZC_VLOG(1) << "Clearing user history";
   engine_->ClearUserHistory();
+  english::ClearLearnedEnglishWords();  // Nagi
   return true;
 }
 

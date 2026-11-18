@@ -66,8 +66,10 @@ mozc_cc_library(
         "//engine:engine_interface",
         "//protocol:commands_cc_proto",
         "//protocol:config_cc_proto",
+        "//base:japanese_util",
         "//english:automatic_english",
         "//english:english_detector",
+        "//english:english_memory",
         "//transliteration",
         "//zenz:zenz_client",
         "//zenz:zenz_feedback",
@@ -168,6 +170,7 @@ mozc_cc_library(
     deps = [
         ":keymap",
         ":session",
+        "//english:english_memory",
         "//base:clock",
         "//base:port",
         "//base:stopwatch",

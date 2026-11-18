@@ -48,6 +48,7 @@
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "base/clock.h"
+#include "base/japanese_util.h"
 #include "base/strings/unicode.h"
 #include "base/port.h"
 #include "base/util.h"
@@ -58,6 +59,7 @@
 #include "engine/engine_interface.h"
 #include "english/automatic_english.h"
 #include "english/english_detector.h"
+#include "english/english_memory.h"
 #include "protocol/commands.pb.h"
 #include "protocol/config.pb.h"
 #include "session/ime_context.h"
@@ -630,55 +632,53 @@ void Session::LeaveLiveConversion(bool keep_converted) {
   EndLiveConversion();
 }
 
-void Session::ApplyAutomaticEnglish(bool end_of_input) {
-  composer::Composer* composer = context_->mutable_composer();
-  const ConverterInterface* converter = context_->converter().GetConverter();
-  const std::string keys = composer->GetRawString();
-  // Marks and digits end a stretch of romaji. They are typed again as they
-  // are when the composition is rebuilt.
-  const auto is_separator = [](char c) {
-    return absl::ascii_isdigit(static_cast<unsigned char>(c)) ||
-           std::string_view(",.!?").find(c) != std::string_view::npos;
-  };
-  // Only plain romaji typed at the end of the composition. Anything else,
-  // such as a capital, leaves the composition as it is.
-  if (!context_->GetConfig().use_automatic_english() ||
-      context_->GetConfig().preedit_method() != config::Config::ROMAN ||
-      context_->state() != ImeContext::COMPOSITION || converter == nullptr ||
-      composer->table() == nullptr ||
-      composer->GetInputMode() != transliteration::HIRAGANA ||
-      composer->GetInputFieldType() == commands::Context::PASSWORD ||
-      composer->GetCursor() != composer->GetLength() ||
-      !std::all_of(keys.begin(), keys.end(), [&](char c) {
-        return absl::ascii_islower(static_cast<unsigned char>(c)) ||
-               c == '-' || is_separator(c);
-      })) {
-    english_keys_.clear();
-    return;
-  }
-  const english::RomajiReader reader(composer->table());
+namespace {
+// Marks and digits end a stretch of romaji. They are typed again as they are
+// when the composition is rebuilt.
+bool IsEnglishSeparator(char c) {
+  return absl::ascii_isdigit(static_cast<unsigned char>(c)) ||
+         std::string_view(",.!?").find(c) != std::string_view::npos;
+}
+}  // namespace
+
+bool Session::CanFindEnglish(std::string_view keys) const {
+  const composer::Composer& composer = context_->composer();
+  // Only plain romaji. Anything else, such as a capital, is left alone.
+  return context_->GetConfig().use_automatic_english() &&
+         context_->GetConfig().preedit_method() == config::Config::ROMAN &&
+         context_->converter().GetConverter() != nullptr &&
+         composer.table() != nullptr &&
+         composer.GetInputFieldType() != commands::Context::PASSWORD &&
+         std::all_of(keys.begin(), keys.end(), [](char c) {
+           return absl::ascii_islower(static_cast<unsigned char>(c)) ||
+                  c == '-' || IsEnglishSeparator(c);
+         });
+}
+
+std::vector<english::EnglishDetector::Run> Session::FindEnglish(
+    std::string_view keys, bool end_of_input, bool continues) const {
+  using Run = english::EnglishDetector::Run;
+  std::vector<Run> runs;
+  const english::RomajiReader reader(context_->composer().table());
   const english::EnglishWords& words = english::GetEnglishWords(reader);
   if (words.size() == 0) {
-    return;  // Built without the word list.
+    return runs;  // Built without the word list.
   }
-  const english::ConverterJudge judge(converter);
-  const english::EnglishDetector detector(&words, &reader, &judge);
-  using Run = english::EnglishDetector::Run;
-  // The last result helps only when one key was added, or none before
-  // converting. After an edit it may point past the end of the keys, and the
-  // composition may hold part of a word typed in English.
-  const bool continues =
-      !english_keys_.empty() && absl::StartsWith(keys, english_keys_) &&
-      (keys.size() == english_keys_.size() + 1 ||
-       (end_of_input && keys.size() == english_keys_.size()));
+  const english::ConverterJudge judge(context_->converter().GetConverter());
+  english::EnglishDetector detector(&words, &reader, &judge);
+  // Like the engine's own history: nothing is recalled in incognito mode.
+  const english::LearnedWords learned =
+      context_->GetConfig().incognito_mode()
+          ? english::LearnedWords()
+          : english::GetLearnedEnglishWords();
+  detector.set_learned(&learned);
 
   // The stretches of romaji between the separators. Every stretch but the
   // last is finished: its consonants at the end cannot become kana.
-  std::vector<Run> runs;
   size_t begin = 0;
   while (begin <= keys.size()) {
     size_t end = begin;
-    while (end < keys.size() && !is_separator(keys[end])) {
+    while (end < keys.size() && !IsEnglishSeparator(keys[end])) {
       ++end;
     }
     const bool last = end == keys.size();
@@ -692,14 +692,41 @@ void Session::ApplyAutomaticEnglish(bool end_of_input) {
     }
     const std::vector<Run> found =
         settled ? previous
-                : detector.Detect(
-                      std::string_view(keys).substr(begin, end - begin),
-                      end_of_input || !last, continues ? &previous : nullptr);
+                : detector.Detect(keys.substr(begin, end - begin),
+                                  end_of_input || !last,
+                                  continues ? &previous : nullptr);
     for (const Run& run : found) {
       runs.push_back(Run{run.begin + begin, run.end + begin});
     }
     begin = end + 1;
   }
+  return runs;
+}
+
+void Session::ApplyAutomaticEnglish(bool end_of_input) {
+  composer::Composer* composer = context_->mutable_composer();
+  const std::string keys = composer->GetRawString();
+  if (keys.size() <= 1) {
+    english_suppressed_ = false;  // A new composition.
+  }
+  // Only what is typed at the end of a composition shown as kana. With F10
+  // or the like the user chose how to show it.
+  if (english_suppressed_ || !CanFindEnglish(keys) || context_->state() != ImeContext::COMPOSITION ||
+      composer->GetInputMode() != transliteration::HIRAGANA ||
+      composer->GetOutputMode() != transliteration::HIRAGANA ||
+      composer->GetCursor() != composer->GetLength()) {
+    english_keys_.clear();
+    return;
+  }
+  // The last result helps only when one key was added, or none before
+  // converting. After an edit it may point past the end of the keys, and the
+  // composition may hold part of a word typed in English.
+  const bool continues =
+      !english_keys_.empty() && absl::StartsWith(keys, english_keys_) &&
+      (keys.size() == english_keys_.size() + 1 ||
+       (end_of_input && keys.size() == english_keys_.size()));
+  std::vector<english::EnglishDetector::Run> runs =
+      FindEnglish(keys, end_of_input, continues);
   const bool changed = continues ? runs != english_runs_
                                  : !runs.empty() || !english_runs_.empty();
   english_keys_ = keys;
@@ -707,6 +734,41 @@ void Session::ApplyAutomaticEnglish(bool end_of_input) {
   if (changed) {
     composer->EditErase();
     english::TypeWithRuns(keys, english_runs_, composer);
+  }
+}
+
+void Session::LearnEnglishFromCommit(
+    std::string_view keys,
+    const std::vector<english::EnglishDetector::Run>* shown,
+    std::string_view committed) {
+  if (!CanFindEnglish(keys) || context_->GetConfig().incognito_mode() ||
+      std::any_of(keys.begin(), keys.end(), IsEnglishSeparator)) {
+    return;
+  }
+  // What the automatic input mode made of these keys by itself: what it
+  // showed, or what it would have without F10 or F6.
+  const std::vector<english::EnglishDetector::Run> runs =
+      shown != nullptr
+          ? *shown
+          : FindEnglish(keys, /*end_of_input=*/true, /*continues=*/false);
+  const std::string text = absl::AsciiStrToLower(
+      japanese_util::FullWidthAsciiToHalfWidthAscii(committed));
+  if (runs.empty()) {
+    // Committed as typed, with F10 or the like: the keys are a word. Keys
+    // that read as kana and are in no list are more likely a phrase.
+    const english::RomajiReader reader(context_->composer().table());
+    if (text == keys && (!reader.ReadsAsKana(keys) ||
+                         english::GetEnglishWords(reader).Find(keys))) {
+      english::LearnEnglishWord(keys, /*english=*/true);
+    }
+    return;
+  }
+  // A word shown in English that the user did not commit is not one.
+  for (const english::EnglishDetector::Run& run : runs) {
+    const std::string_view word = keys.substr(run.begin, run.end - run.begin);
+    if (text.find(word) == std::string::npos) {
+      english::LearnEnglishWord(word, /*english=*/false);
+    }
   }
 }
 
@@ -2435,6 +2497,21 @@ bool Session::CommitInternal(commands::Command* command,
 
 bool Session::Commit(commands::Command* command) {
   ApplyAutomaticEnglish(/*end_of_input=*/true);
+  // What live conversion shows was not chosen by the user word by word.
+  const std::string keys =
+      IsLiveConversion() ? "" : context_->composer().GetRawString();
+  const bool is_shown = english_keys_ == keys;
+  const std::vector<english::EnglishDetector::Run> shown = english_runs_;
+  const bool result = CommitDisplayed(command);
+  if (!keys.empty() && context_->composer().Empty() &&
+      command->output().result().type() == commands::Result::STRING) {
+    LearnEnglishFromCommit(keys, is_shown ? &shown : nullptr,
+                           command->output().result().value());
+  }
+  return result;
+}
+
+bool Session::CommitDisplayed(commands::Command* command) {
   // Commit what is displayed, also when the request is not a key.
   if (IsLiveConversion() && !zenz_preview_.empty()) {
     return CommitZenzPreview(command);
@@ -2700,7 +2777,17 @@ bool Session::DisplayAsHiragana(commands::Command* command) {
   if (context_->state() == ImeContext::CONVERSION) {
     return ConvertToHiragana(command);
   } else {  // context_->state() == ImeContext::COMPOSITION
-    context_->mutable_composer()->SetOutputMode(transliteration::HIRAGANA);
+    // Nagi: the key for "this is kana". English words found by the automatic
+    // input mode go back to kana, for the rest of this composition.
+    composer::Composer* composer = context_->mutable_composer();
+    const std::string keys = composer->GetRawString();
+    if (CanFindEnglish(keys) && english_keys_ == keys) {
+      english_suppressed_ = true;
+      english_runs_.clear();
+      composer->EditErase();
+      english::TypeWithRuns(keys, english_runs_, composer);
+    }
+    composer->SetOutputMode(transliteration::HIRAGANA);
     OutputComposition(command);
     return true;
   }

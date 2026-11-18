@@ -329,6 +329,8 @@ class Session {
   // found in them, which the composition shows as typed.
   std::string english_keys_;
   std::vector<english::EnglishDetector::Run> english_runs_;
+  // The user asked for kana in this composition (F6).
+  bool english_suppressed_ = false;
 
   std::unique_ptr<ImeContext> CreateContext(
       const EngineInterface& engine) const;
@@ -436,6 +438,22 @@ class Session {
   // may still become kana; with |end_of_input|, before converting or
   // committing, they cannot.
   void ApplyAutomaticEnglish(bool end_of_input);
+  // True if the automatic input mode looks at compositions typed as |keys|.
+  bool CanFindEnglish(std::string_view keys) const;
+  // The English words in |keys|. |continues|: |keys| are the keys looked at
+  // last, or those and one more.
+  std::vector<english::EnglishDetector::Run> FindEnglish(
+      std::string_view keys, bool end_of_input, bool continues) const;
+  // Learns from a whole composition typed as |keys| and committed as
+  // |committed|, when that differs from what the mode shows by itself.
+  // |shown|: the words it showed in English, or nullptr when the user had
+  // switched it off for this composition with F10 or F6.
+  void LearnEnglishFromCommit(
+      std::string_view keys,
+      const std::vector<english::EnglishDetector::Run>* shown,
+      std::string_view committed);
+  // Commits what is displayed.
+  bool CommitDisplayed(commands::Command* command);
   // True if the composition ends with a whole English word found by it.
   bool EndsWithEnglishWord() const;
   // The converted head that still matches the kana being typed, and how many
