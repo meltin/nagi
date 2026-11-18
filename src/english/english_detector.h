@@ -17,6 +17,8 @@
 namespace mozc {
 namespace english {
 
+class RomajiReader;
+
 // The English word list: tools/english/prepare_english_words.sh.
 class EnglishWords {
  public:
@@ -28,6 +30,10 @@ class EnglishWords {
 
   // Reads "word <TAB> scowl_size <TAB> sources" lines. False if unreadable.
   bool LoadFromFile(const std::string& path);
+  void LoadFromString(std::string_view text);
+  // Removes romanized Japanese names that only the conversion dictionary
+  // lists ("ayaka"): they read as kana and are not English.
+  void RemoveRomajiNames(const RomajiReader& reader);
   void Add(std::string_view word, const Info& info);
   void Remove(std::string_view word);
 

@@ -46,6 +46,7 @@ mozc_cc_library(
         "//composer:__pkg__",
         "//converter:__pkg__",
         "//engine:__pkg__",
+        "//english:__pkg__",  # Nagi
         "//prediction:__pkg__",
         "//request:__pkg__",
         "//rewriter:__pkg__",

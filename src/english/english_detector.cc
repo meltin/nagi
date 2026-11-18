@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <fstream>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -38,8 +39,14 @@ bool EnglishWords::LoadFromFile(const std::string& path) {
   if (!file) {
     return false;
   }
-  std::string line;
-  while (std::getline(file, line)) {
+  std::stringstream text;
+  text << file.rdbuf();
+  LoadFromString(text.str());
+  return true;
+}
+
+void EnglishWords::LoadFromString(std::string_view text) {
+  for (const std::string_view line : absl::StrSplit(text, '\n')) {
     const std::vector<std::string_view> fields = absl::StrSplit(line, '\t');
     Info info;
     if (fields.size() != 3 || !absl::SimpleAtoi(fields[1], &info.scowl_size)) {
@@ -49,7 +56,13 @@ bool EnglishWords::LoadFromFile(const std::string& path) {
     info.in_dictionary = fields[2].find('d') != std::string_view::npos;
     Add(fields[0], info);
   }
-  return true;
+}
+
+void EnglishWords::RemoveRomajiNames(const RomajiReader& reader) {
+  std::erase_if(words_, [&reader](const auto& entry) {
+    return entry.second.scowl_size == 0 && !entry.second.in_cspell &&
+           reader.ReadsAsKana(entry.first);
+  });
 }
 
 void EnglishWords::Add(std::string_view word, const Info& info) {

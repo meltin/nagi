@@ -1,5 +1,6 @@
 # Nagi: tells English words from romaji in a composition (automatic input mode).
 
+load("//build_tools:embed_file.bzl", "mozc_embed_file")
 load(
     "//:build_defs.bzl",
     "mozc_cc_binary",
@@ -17,6 +18,45 @@ mozc_cc_library(
         "//composer:table",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+mozc_embed_file(
+    name = "gen_english_words",
+    srcs = ["//data/english_nagi:english_words"],
+    out = "english_words.inc",
+    var_name = "kEnglishWords",
+)
+
+mozc_cc_library(
+    name = "automatic_english",
+    srcs = [
+        "automatic_english.cc",
+        ":gen_english_words",
+    ],
+    hdrs = ["automatic_english.h"],
+    deps = [
+        ":english_detector",
+        "//base:embedded_file",
+        "//composer",
+        "//converter:converter_interface",
+        "//transliteration",
+    ],
+)
+
+mozc_cc_test(
+    name = "automatic_english_test",
+    size = "small",
+    srcs = ["automatic_english_test.cc"],
+    deps = [
+        ":automatic_english",
+        ":english_detector",
+        "//composer",
+        "//composer:table",
+        "//config:config_handler",
+        "//protocol:commands_cc_proto",
+        "//protocol:config_cc_proto",
+        "//testing:gunit_main",
     ],
 )
 

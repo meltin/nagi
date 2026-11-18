@@ -32,6 +32,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <vector>
 
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -47,6 +48,18 @@ class ConverterInterface {
 
   // Allow deletion through the interface.
   virtual ~ConverterInterface() = default;
+
+  // Nagi: how natural |reading| is as Japanese; see Converter. Negative when
+  // the converter cannot tell.
+  virtual int GetReadingCost(absl::string_view reading,
+                             std::vector<size_t>* segment_ends = nullptr,
+                             std::vector<int>* segment_costs = nullptr) const {
+    return -1;
+  }
+  // Nagi: true if a longer dictionary word starts with |reading|.
+  virtual bool IsReadingPrefixOfWord(absl::string_view reading) const {
+    return false;
+  }
 
   // Starts conversion for given request.
   [[nodiscard]]

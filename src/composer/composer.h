@@ -198,6 +198,7 @@ class Composer final {
   bool Empty() const;
 
   void SetTable(std::shared_ptr<const Table> table);
+  const Table* table() const { return table_.get(); }
 
   void SetRequest(std::shared_ptr<const commands::Request> request);
   void SetConfig(std::shared_ptr<const config::Config> config);

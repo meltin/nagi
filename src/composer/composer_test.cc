@@ -3241,5 +3241,25 @@ TEST_F(ComposerTest, CreateEmptyComposerData) {
   EXPECT_EQ(data.source_text(), "");
 }
 
+// Nagi: a word the user types in English stays as typed among kana.
+TEST_F(ComposerTest, NagiEnglishWordAmongKana) {
+  table_->AddRule("ha", "は", "");
+  table_->AddRule("de", "で", "");
+  table_->AddRule("n", "ん", "");
+  table_->AddRule("nn", "ん", "");
+  composer_->SetInputMode(transliteration::HIRAGANA);
+  composer_->InsertCharacter("ha");
+  // An "n" still waiting for a vowel is "ん" before the word.
+  composer_->InsertCharacterKeyAndPreedit("n", "ん");
+  composer_->SetInputMode(transliteration::HALF_ASCII);
+  composer_->InsertCharacter("google");
+  composer_->SetInputMode(transliteration::HIRAGANA);
+  composer_->InsertCharacter("de");
+  EXPECT_EQ(composer_->GetStringForPreedit(), "はんgoogleで");
+  EXPECT_EQ(composer_->GetQueryForConversion(), "はんgoogleで");
+  EXPECT_EQ(composer_->GetStringForSubmission(), "はんgoogleで");
+  EXPECT_EQ(composer_->GetRawString(), "hangooglede");
+}
+
 }  // namespace composer
 }  // namespace mozc

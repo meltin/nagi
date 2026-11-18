@@ -180,11 +180,11 @@ class Converter final : public ConverterInterface {
   // ends in |reading|, in bytes, and with |segment_costs| what each costs.
   int GetReadingCost(absl::string_view reading,
                      std::vector<size_t>* segment_ends = nullptr,
-                     std::vector<int>* segment_costs = nullptr) const;
+                     std::vector<int>* segment_costs = nullptr) const override;
 
   // Nagi: true if a word of the system dictionary has a reading that starts
   // with |reading| and is longer, so the user may still be typing that word.
-  bool IsReadingPrefixOfWord(absl::string_view reading) const;
+  bool IsReadingPrefixOfWord(absl::string_view reading) const override;
 
   const ImmutableConverterInterface& immutable_converter() const {
     DCHECK(immutable_converter_);

@@ -69,16 +69,7 @@ int main(int argc, char** argv) {
     std::cerr << "Cannot read --words." << std::endl;
     return 1;
   }
-  // Romanized Japanese names that only the conversion dictionary lists.
-  std::vector<std::string> names;
-  for (const auto& [word, info] : words.words()) {
-    if (info.scowl_size == 0 && !info.in_cspell && reader.ReadsAsKana(word)) {
-      names.push_back(word);
-    }
-  }
-  for (const std::string& name : names) {
-    words.Remove(name);
-  }
+  words.RemoveRomajiNames(reader);
 
   const ConverterJudge judge(&(*engine)->GetNagiConverterForTesting());
   mozc::english::EnglishDetector detector(&words, &reader, &judge);
