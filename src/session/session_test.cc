@@ -10852,11 +10852,16 @@ class ZenzSessionTest : public SessionTest {
     return command;
   }
 
-  void SetUpEngine(MockEngine* engine, bool spelling_correction = false) {
+  void SetUpEngine(MockEngine* engine, bool spelling_correction = false,
+                   bool user_dictionary = false) {
     converter_ = CreateEngineConverterMock(engine);
     Segments segments;
     SetAiueo(&segments);
     segments.mutable_segment(0)->mutable_candidate(0)->value = "愛上尾";
+    if (user_dictionary) {
+      segments.mutable_segment(0)->mutable_candidate(0)->attributes |=
+          converter::Attribute::USER_DICTIONARY;
+    }
     if (spelling_correction) {
       segments.mutable_segment(0)->mutable_candidate(0)->attributes |=
           converter::Attribute::SPELLING_CORRECTION;
@@ -11319,6 +11324,25 @@ TEST_F(ZenzSessionTest, RejectedAnswerKeepsTheEngineConversion) {
   commands::Command command = TypeAndApplyLiveConversion(&session);
   // "でした" is not in the reading.
   zenz_client.Answer("愛上尾でした");
+  command = SendCallback(command, &session);
+  EXPECT_PREEDIT("愛上尾", command);
+  EXPECT_EQ(command.output().conversion_status(),
+            commands::Output::CONVERSION_STATUS_ENGINE);
+  EXPECT_FALSE(command.output().has_callback());
+}
+
+TEST_F(ZenzSessionTest, UserDictionaryWordIsNotRewritten) {
+  FakeZenzClient zenz_client;
+  MockEngine engine;
+  SetUpEngine(&engine, /*spelling_correction=*/false, /*user_dictionary=*/true);
+  Session session(engine);
+  session.SetConfig(ZenzConfig());
+  InitSessionToPrecomposition(&session);
+
+  commands::Command command = TypeAndApplyLiveConversion(&session);
+  // The same answer replaces the preview when the word is not the user's
+  // (CorrectionReplacesThePreview).
+  zenz_client.Answer("アイウエオ");
   command = SendCallback(command, &session);
   EXPECT_PREEDIT("愛上尾", command);
   EXPECT_EQ(command.output().conversion_status(),

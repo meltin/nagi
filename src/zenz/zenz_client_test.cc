@@ -56,6 +56,38 @@ TEST(ZenzClientTest, RejectsOutputsThatChangeTheReading) {
   EXPECT_FALSE(IsAcceptableZenzOutput("はし", "橋"));
 }
 
+TEST(ZenzClientTest, ReadingAloneDoesNotCatchTheseOutputs) {
+  // Why KeepsEngineText() exists: the kana of these outputs are all in the
+  // reading, so the reading check passes them.
+  EXPECT_TRUE(IsAcceptableZenzOutput("いっしょにいって", "行って"));
+  EXPECT_TRUE(IsAcceptableZenzOutput("とうきょうにいく", "Tokyoに行く"));
+}
+
+TEST(ZenzClientTest, KeepsEngineText) {
+  // A different choice of kanji or kana is what Zenz is for.
+  EXPECT_TRUE(KeepsEngineText("機会を作る", "機械を作る", {}));
+  EXPECT_TRUE(KeepsEngineText("橋をわたる", "橋を渡る", {}));
+  EXPECT_TRUE(KeepsEngineText("iPhoneを勝った", "iPhoneを買った", {}));
+  EXPECT_TRUE(KeepsEngineText("3日目に合う", "3日目に会う", {}));
+
+  // Only the beginning or the end of the engine's text: typed characters
+  // would be lost.
+  EXPECT_FALSE(KeepsEngineText("一緒に行って", "行って", {}));
+  EXPECT_FALSE(KeepsEngineText("一緒に行って", "一緒に", {}));
+
+  // Latin text, digits and emoji are not Zenz's to invent or change.
+  EXPECT_FALSE(KeepsEngineText("東京に行く", "Tokyoに行く", {}));
+  EXPECT_FALSE(KeepsEngineText("GitHubを使う", "GitLabを使う", {}));
+  EXPECT_FALSE(KeepsEngineText("3日目に会う", "5日目に会う", {}));
+  EXPECT_FALSE(KeepsEngineText("楽しい", "楽しい😀", {}));
+  EXPECT_TRUE(KeepsEngineText("楽しい😀", "愉しい😀", {}));
+}
+
+TEST(ZenzClientTest, KeepsEngineTextProtectsUserDictionaryWords) {
+  EXPECT_TRUE(KeepsEngineText("凪を仕様する", "凪を使用する", {"凪"}));
+  EXPECT_FALSE(KeepsEngineText("凪を使用する", "薙を使用する", {"凪"}));
+}
+
 TEST(ZenzClientTest, EscapeJsonString) {
   EXPECT_EQ(EscapeJsonString("a\"b\\c\nd"), "a\\\"b\\\\c\\u000ad");
   EXPECT_EQ(EscapeJsonString("キョウ"), "キョウ");

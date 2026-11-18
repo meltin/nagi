@@ -10,6 +10,7 @@
 #include <string_view>
 #include <vector>
 
+#include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "base/strings/japanese.h"
 #include "base/strings/unicode.h"
@@ -157,6 +158,56 @@ bool IsAcceptableZenzOutput(std::string_view reading, std::string_view output) {
       return false;
     }
     ++reading_index;
+  }
+  return true;
+}
+
+namespace {
+
+bool IsAsciiAlnum(char32_t c) {
+  return c < 0x80 && absl::ascii_isalnum(static_cast<unsigned char>(c));
+}
+
+// Emoji and pictographs. Variation selectors are skipped by the caller.
+bool IsEmoji(char32_t c) {
+  return (0x2600 <= c && c <= 0x27BF) || (0x1F000 <= c && c <= 0x1FAFF);
+}
+
+// The runs of ASCII letters and digits of |text| in order, then its emoji.
+std::vector<std::u32string> FixedParts(std::string_view text) {
+  std::vector<std::u32string> runs;
+  std::u32string emoji;
+  bool in_run = false;
+  for (const char32_t c : ToChars32(text)) {
+    if (IsAsciiAlnum(c)) {
+      if (!in_run) {
+        runs.emplace_back();
+      }
+      runs.back().push_back(c);
+    } else if (IsEmoji(c)) {
+      emoji.push_back(c);
+    }
+    in_run = IsAsciiAlnum(c);
+  }
+  runs.push_back(std::move(emoji));
+  return runs;
+}
+
+}  // namespace
+
+bool KeepsEngineText(std::string_view engine_text, std::string_view output,
+                     const std::vector<std::string>& protected_words) {
+  if (output.size() < engine_text.size() &&
+      (engine_text.starts_with(output) || engine_text.ends_with(output))) {
+    return false;
+  }
+  if (FixedParts(engine_text) != FixedParts(output)) {
+    return false;
+  }
+  for (const std::string& word : protected_words) {
+    if (!word.empty() && output.find(word) == std::string_view::npos) {
+      return false;
+    }
   }
   return true;
 }

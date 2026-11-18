@@ -1000,9 +1000,16 @@ bool Session::ApplyZenzCorrection(commands::Command* command) {
           // committing is learned, and the status stays the engine's: the
           // indicator says Zenz only when Zenz changed the text.
           zenz_state_ = kZenzDone;
-        } else {
+        } else if (zenz::KeepsEngineText(
+                       live_conversion_engine_text_, result.text,
+                       context_->converter()
+                           .GetSelectedUserDictionaryValues())) {
           zenz_state_ = kZenzApplied;
           zenz_preview_ = std::move(result.text);
+        } else {
+          // It drops typed characters, invents Latin text or emoji, or
+          // rewrites a user dictionary word. The engine's conversion stays.
+          zenz_state_ = kZenzDone;
         }
       } else {
         zenz_state_ = kZenzDone;

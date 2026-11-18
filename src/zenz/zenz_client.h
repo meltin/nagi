@@ -8,6 +8,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace mozc {
 namespace zenz {
@@ -67,6 +68,19 @@ std::string BuildZenzPrompt(std::string_view reading,
 // The kana in |output| must appear in |reading| in the same order, which
 // rejects outputs that add or change words.
 bool IsAcceptableZenzOutput(std::string_view reading, std::string_view output);
+
+// Returns true when |output| may replace |engine_text|, the engine's conversion
+// of the same reading. Checks what the reading alone cannot show:
+// - |output| is not just the beginning or the end of |engine_text|, which
+//   would drop characters the user typed,
+// - it has the same runs of ASCII letters and digits and the same emoji,
+//   which the model must not invent or rewrite,
+// - it still contains every word of |protected_words|, the user dictionary
+//   words the engine chose.
+// The same rules as Mozkey's, without its repairs. Which kanji is right for a
+// homophone is deliberately not judged here.
+bool KeepsEngineText(std::string_view engine_text, std::string_view output,
+                     const std::vector<std::string>& protected_words);
 
 // JSON helpers for the llama-server completion API.
 std::string EscapeJsonString(std::string_view text);

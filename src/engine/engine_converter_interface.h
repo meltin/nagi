@@ -36,6 +36,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "absl/strings/string_view.h"
 #include "composer/composer.h"
@@ -79,6 +80,10 @@ class EngineConverterInterface {
 
   // Check if the current state is in the state bitmap.
   virtual bool CheckState(States) const = 0;
+
+  // Nagi: the values of the selected candidates that come from the user
+  // dictionary, for the conversion in progress. Empty when not converting.
+  virtual std::vector<std::string> GetSelectedUserDictionaryValues() const = 0;
 
   // Indicate if the conversion session is active or not.  In general,
   // Convert functions make it active and Cancel, Reset and Commit

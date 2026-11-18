@@ -137,6 +137,26 @@ bool EngineConverter::CheckState(
   return ((state_ & states) != NO_STATE);
 }
 
+std::vector<std::string> EngineConverter::GetSelectedUserDictionaryValues()
+    const {
+  std::vector<std::string> values;
+  if (!CheckState(CONVERSION)) {
+    return values;
+  }
+  for (size_t i = 0; i < segments_.conversion_segments_size(); ++i) {
+    const Segment& segment = segments_.conversion_segment(i);
+    const int index = GetCandidateIndexForConverter(i);
+    if (!segment.is_valid_index(index)) {
+      continue;
+    }
+    const converter::Candidate& candidate = segment.candidate(index);
+    if (candidate.attributes & converter::Attribute::USER_DICTIONARY) {
+      values.push_back(candidate.value);
+    }
+  }
+  return values;
+}
+
 bool EngineConverter::IsActive() const {
   return CheckState(SUGGESTION | PREDICTION | CONVERSION);
 }
