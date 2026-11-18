@@ -10834,6 +10834,24 @@ class ZenzSessionTest : public SessionTest {
         .WillRepeatedly(DoAll(SetArgPointee<1>(segments), Return(true)));
   }
 
+  // The engine converts in two segments: "あい" to "愛", and the rest of the
+  // reading, |second_key|, to |second_value|.
+  void SetUpTwoSegmentEngine(MockEngine* engine, absl::string_view second_key,
+                             absl::string_view second_value) {
+    converter_ = CreateEngineConverterMock(engine);
+    Segments segments;
+    Segment* segment = segments.add_segment();
+    segment->set_key("あい");
+    AddCandidate("あい", "愛", segment);
+    segment = segments.add_segment();
+    segment->set_key(second_key);
+    AddCandidate(second_key, second_value, segment);
+    ConversionRequest default_request;
+    FillT13Ns(default_request, &segments);
+    EXPECT_CALL(*converter_, StartConversion(_, _))
+        .WillRepeatedly(DoAll(SetArgPointee<1>(segments), Return(true)));
+  }
+
   // Makes typing show one suggestion, "アイウエオ会".
   void SetUpSuggestion() {
     Segments segments;
@@ -11116,6 +11134,59 @@ TEST_F(ZenzSessionTest, OpenRomajiAtTheEndIsNotKeptAsConverted) {
   command.Clear();
   InsertCharacterChars("a", &session, &command);
   EXPECT_PREEDIT("あいうえおな", command);
+}
+
+TEST_F(ZenzSessionTest, OnlyTheChangedSegmentGoesBackToKana) {
+  FakeZenzClient zenz_client;
+  MockEngine engine;
+  SetUpTwoSegmentEngine(&engine, "うえお", "上尾");
+  Session session(engine);
+  session.SetConfig(ZenzConfig());
+  InitSessionToPrecomposition(&session);
+
+  commands::Command command = TypeAndApplyLiveConversion(&session);
+  EXPECT_PREEDIT("愛上尾", command);
+  command.Clear();
+  SendKey("Backspace", &session, &command);
+  // The first segment stays. The second lost a character, so all of it is
+  // kana again.
+  EXPECT_PREEDIT("愛うえ", command);
+}
+
+TEST_F(ZenzSessionTest, SegmentWithOpenRomajiGoesBackToKana) {
+  FakeZenzClient zenz_client;
+  MockEngine engine;
+  // The conversion reads the open "n" at the end as "ん".
+  SetUpTwoSegmentEngine(&engine, "うえおん", "上恩");
+  Session session(engine);
+  session.SetConfig(ZenzConfig());
+  InitSessionToPrecomposition(&session);
+
+  commands::Command command;
+  InsertCharacterChars("aiueon", &session, &command);
+  command = SendCallback(command, &session);
+  EXPECT_PREEDIT("愛上恩", command);
+  // "n" becomes "な", so "恩" must not stay.
+  command.Clear();
+  InsertCharacterChars("a", &session, &command);
+  EXPECT_PREEDIT("愛うえおな", command);
+}
+
+TEST_F(ZenzSessionTest, TurningTheImeOffCommitsWhatIsOnScreen) {
+  FakeZenzClient zenz_client;
+  MockEngine engine;
+  SetUpEngine(&engine);
+  Session session(engine);
+  session.SetConfig(ZenzConfig());
+  InitSessionToPrecomposition(&session);
+
+  commands::Command command = TypeAndApplyLiveConversion(&session);
+  command.Clear();
+  InsertCharacterChars("ka", &session, &command);
+  EXPECT_PREEDIT("愛上尾か", command);
+  command.Clear();
+  session.IMEOff(&command);
+  EXPECT_RESULT("愛上尾か", command);
 }
 
 TEST_F(ZenzSessionTest, UnboundKeyKeepsPollingWhileZenzIsPending) {
