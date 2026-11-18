@@ -24,14 +24,21 @@ CACHE = os.path.expanduser('~/Library/Caches/nagi-english')
 
 def spoken_sentences():
   """Readings of the 5,000 sentences of JSUT basic5000 (CC BY-SA 4.0; downloaded for the
-  measurement, not kept in the repository). They are written as pronounced: the
-  particles は and へ appear as わ and え."""
+  measurement, not kept in the repository). The corpus writes its kana as pronounced
+  (the particle は as わ), which nobody types, so the readings are made from the text
+  with the converter's reverse conversion instead."""
   path = os.path.join(CACHE, 'basic5000.yaml')
   if not os.path.exists(path):
     os.makedirs(CACHE, exist_ok=True)
     subprocess.run(['curl', '-fsSL', JSUT_URL, '-o', path], check=True)
   with open(path, encoding='utf-8') as lines:
-    return [line.split(':', 1)[1].strip() for line in lines if 'kana_level0:' in line]
+    texts = [line.split(':', 1)[1].strip() for line in lines if 'text_level0:' in line]
+  readings = subprocess.run([collect.COST_TOOL, '--reverse'], input='\n'.join(texts) + '\n',
+                            capture_output=True, text=True, check=True).stdout.splitlines()
+  # Keep the sentences that came back as kana only.
+  kana = [''.join(c for c in reading if c not in '。、「」？！・') for reading in readings]
+  return [reading for reading in kana
+          if reading and all('ぁ' <= c <= 'ゖ' or c == 'ー' for c in reading)]
 
 
 def held_out():
@@ -79,7 +86,7 @@ def _generated(words, rng):
   for reading in spoken_sentences():
     keys = romaji.to_romaji(reading)
     if keys:
-      yield 'japanese_spoken', keys, None
+      yield 'japanese_text', keys, None
   # Words that are common, known to spell checkers for code and in the dictionary.
   common = sorted(word for word, (size, sources) in words.items()
                   if size == 35 and sources == 'cd' and len(word) >= 3)

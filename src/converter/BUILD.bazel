@@ -1142,6 +1142,8 @@ mozc_cc_binary(
     srcs = ["reading_cost_main.cc"],
     deps = [
         ":converter",
+        ":segments",
+        "@com_google_absl//absl/flags:flag",
         "//base:init_mozc",
         "//data_manager/oss:oss_data_manager",
         "//engine",

@@ -10,10 +10,16 @@
 #include <string>
 #include <utility>
 
+#include "absl/flags/flag.h"
 #include "base/init_mozc.h"
 #include "converter/converter.h"
+#include "converter/segments.h"
 #include "data_manager/oss/oss_data_manager.h"
 #include "engine/engine.h"
+
+ABSL_FLAG(bool, reverse, false,
+          "Print the reading of each line of text instead (reverse conversion), "
+          "for turning ordinary sentences into test readings.");
 
 int main(int argc, char** argv) {
   mozc::InitMozc(argv[0], &argc, &argv);
@@ -25,6 +31,22 @@ int main(int argc, char** argv) {
   }
   const mozc::converter::Converter& converter =
       (*engine)->GetNagiConverterForTesting();
+  if (absl::GetFlag(FLAGS_reverse)) {
+    std::string text;
+    while (std::getline(std::cin, text)) {
+      mozc::Segments segments;
+      std::string reading;
+      if (converter.StartReverseConversion(&segments, text)) {
+        for (const mozc::Segment& segment : segments.conversion_segments()) {
+          if (segment.candidates_size() > 0) {
+            reading += segment.candidate(0).value;
+          }
+        }
+      }
+      std::cout << reading << "\n";
+    }
+    return 0;
+  }
   const auto print = [&converter](const std::string& reading) {
     std::cout << converter.GetReadingCost(reading) << "\t"
               << (converter.IsReadingPrefixOfWord(reading) ? "prefix" : "-")
