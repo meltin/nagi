@@ -935,7 +935,8 @@ void Session::DecorateLivePreview(commands::Command* command) {
   const bool zenz_in_progress =
       zenz_state_ == kZenzWaiting || zenz_state_ == kZenzRequested;
   if (context_->GetConfig().use_conversion_status_indicator()) {
-    if (zenz_in_progress) {
+    // Not while waiting to ask: until then the text is only the engine's.
+    if (zenz_state_ == kZenzRequested) {
       output->set_conversion_status(
           commands::Output::CONVERSION_STATUS_ZENZ_PENDING);
     } else if (zenz_state_ == kZenzApplied) {

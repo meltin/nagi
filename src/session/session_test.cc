@@ -11373,12 +11373,15 @@ TEST_F(ZenzSessionTest, WaitsForTheConfiguredDelay) {
   EXPECT_EQ(zenz_client.request_count_, 0);
   ASSERT_TRUE(command.output().has_callback());
   EXPECT_EQ(command.output().callback().delay_millisec(), 50);
+  // Zenz has not been asked yet, so the status does not say so.
   EXPECT_EQ(command.output().conversion_status(),
-            commands::Output::CONVERSION_STATUS_ZENZ_PENDING);
+            commands::Output::CONVERSION_STATUS_ENGINE);
 
   command = SendCallback(command, &session);
   EXPECT_EQ(zenz_client.request_count_, 1);
   ASSERT_TRUE(command.output().has_callback());
+  EXPECT_EQ(command.output().conversion_status(),
+            commands::Output::CONVERSION_STATUS_ZENZ_PENDING);
 }
 
 TEST_F(ZenzSessionTest, GivesUpWhenNoAnswerComes) {
