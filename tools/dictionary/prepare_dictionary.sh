@@ -121,7 +121,7 @@ step "Install into $out"
 files=(mozcdic-ut-daily.txt dic-nico-pixiv-delta.txt mozcdic-ut-personal-names-daily.txt koyasi-syntax-guard.txt)
 for f in $files; do [[ -s "$generated/profiled/$f" ]] || { echo "missing: $f"; exit 1; }; done
 mkdir -p "$out"
-rm -f "$out"/*.txt
+rm -f "$out"/*.txt(N)  # None yet on a fresh checkout.
 for f in $files; do cp "$generated/profiled/$f" "$out/$f"; done
 wc -l "$out"/*.txt
 # The dictionary is compiled into the binaries through a generated include file, and
