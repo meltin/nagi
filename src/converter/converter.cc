@@ -537,6 +537,51 @@ bool Converter::ResizeSegments(Segments* segments,
   return true;
 }
 
+int Converter::GetReadingCost(const absl::string_view reading) const {
+  if (reading.empty()) {
+    return 0;
+  }
+  Segments segments;
+  segments.InitForConvert(reading);
+  const ConversionOptions options = {
+      .request_type = ConversionRequest::CONVERSION,
+      .max_conversion_candidates_size = 1,
+  };
+  if (!immutable_converter_->Convert(options, &segments)) {
+    return -1;
+  }
+  int cost = 0;
+  for (const Segment& segment : segments.conversion_segments()) {
+    if (segment.candidates_size() == 0) {
+      return -1;
+    }
+    cost += segment.candidate(0).cost;
+  }
+  return cost;
+}
+
+bool Converter::IsReadingPrefixOfWord(const absl::string_view reading) const {
+  class LongerKeyFinder : public dictionary::DictionaryInterface::Callback {
+   public:
+    explicit LongerKeyFinder(size_t size) : size_(size) {}
+    ResultType OnKey(absl::string_view key) override {
+      if (key.size() > size_) {
+        found_ = true;
+        return TRAVERSE_DONE;
+      }
+      return TRAVERSE_NEXT_KEY;
+    }
+    bool found() const { return found_; }
+
+   private:
+    const size_t size_;
+    bool found_ = false;
+  };
+  LongerKeyFinder finder(reading.size());
+  modules_->GetDictionary().LookupPredictive(reading, &finder);
+  return finder.found();
+}
+
 void Converter::CommitContext(const ConversionRequest& request) const {
   predictor_->CommitContext(request);
 }

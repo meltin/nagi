@@ -1133,3 +1133,16 @@ mozc_cc_test(
         "//testing:gunit_main",
     ],
 )
+
+# Nagi: prints reading costs, for tuning the automatic input mode.
+mozc_cc_binary(
+    name = "reading_cost_main",
+    testonly = 1,
+    srcs = ["reading_cost_main.cc"],
+    deps = [
+        ":converter",
+        "//base:init_mozc",
+        "//data_manager/oss:oss_data_manager",
+        "//engine",
+    ],
+)

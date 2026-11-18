@@ -171,6 +171,17 @@ class Converter final : public ConverterInterface {
     return *rewriter_;
   }
 
+  // Nagi: how natural |reading| is as Japanese: the cost of its best
+  // conversion, in the converter's unit of -500 * log(probability). The
+  // reading is hiragana, possibly with ASCII letters. Rewriters and the user's
+  // history do not take part. Returns a negative value when it cannot be
+  // converted.
+  int GetReadingCost(absl::string_view reading) const;
+
+  // Nagi: true if a word of the system dictionary has a reading that starts
+  // with |reading| and is longer, so the user may still be typing that word.
+  bool IsReadingPrefixOfWord(absl::string_view reading) const;
+
   const ImmutableConverterInterface& immutable_converter() const {
     DCHECK(immutable_converter_);
     return *immutable_converter_;

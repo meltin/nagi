@@ -115,6 +115,11 @@ class Engine : public EngineInterface {
   }
 
   // For testing only.
+  // Nagi: the concrete converter, for tools that measure reading costs.
+  const converter::Converter& GetNagiConverterForTesting() const {
+    return *converter_;
+  }
+
   engine::Modules& GetModulesForTesting() const {
     DCHECK(converter_);
     return converter_->modules();
