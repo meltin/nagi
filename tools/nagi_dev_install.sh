@@ -10,6 +10,12 @@ src="${0:A:h}/../src"
 pkg="$src/bazel-bin/mac/Nagi.pkg"
 
 if [[ "${1:-}" != "--no-build" ]]; then
+  # The English word list of the automatic input mode is not committed. Without
+  # it the build works and the mode finds nothing, so make it once per Mac.
+  if [[ ! -s "$src/data/english_nagi/generated/english_words.tsv" ]]; then
+    echo "Making the English word list (once, downloads about 30 MB)"
+    zsh "${0:A:h}/english/prepare_english_words.sh"
+  fi
   # A Bazel server left over from another shell fails with "getconf failed".
   (cd "$src" && bazelisk shutdown >/dev/null 2>&1; bazelisk build package --config release_build)
 fi
