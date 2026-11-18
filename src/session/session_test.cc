@@ -11352,6 +11352,10 @@ TEST_F(ZenzSessionTest, SpaceGoesBackToTheEngineConversion) {
   EXPECT_FALSE(command.output().live_conversion());
   EXPECT_EQ(command.output().conversion_status(),
             commands::Output::CONVERSION_STATUS_NONE);
+  // The text was converted already, so Space moves on to the next candidate
+  // and opens the candidate list at once, as in Mozkey.
+  ASSERT_TRUE(command.output().has_candidate_window());
+  EXPECT_EQ(command.output().candidate_window().focused_index(), 1);
   // The Zenz text is gone: the candidates are the engine's.
   EXPECT_NE(GetComposition(command), "");
   for (const commands::Preedit::Segment& segment :
