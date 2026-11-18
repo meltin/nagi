@@ -115,9 +115,9 @@ class EnglishDetector {
     };
     std::vector<ReadableRule> readable_rules = {{4, 12000, 10000},
                                                 {4, 9000, 6000}};
-    // A readable word that both the spell checkers for code and the
-    // conversion dictionary know ("time", "code", "token") is English more
-    // readily: its margin grows and the cost its kana must exceed shrinks.
+    // A readable word that is common in English and known to the spell
+    // checkers for code ("time", "code", "token") is English more readily:
+    // its margin grows and the cost its kana must exceed shrinks.
     int known_word_margin_bonus = 4500;
     int known_word_cost_discount = 2000;
     // What a taught word that reads as kana may cost in the middle of the

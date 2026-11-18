@@ -86,9 +86,10 @@ def _generated(words, rng):
   text = [keys for keys in map(romaji.to_romaji, spoken_sentences()) if keys]
   for keys in text:
     yield 'japanese_text', keys, None
-  # Words that are common, known to spell checkers for code and in the dictionary.
+  # Words that are common and known to spell checkers for code.
   common = sorted(word for word, (size, sources) in words.items()
-                  if size == 35 and sources == 'cd' and len(word) >= 3)
+                  if size == 35 and 'c' in sources and len(word) >= 3)
+  common = sorted(rng.sample(common, min(len(common), 500)))
   for word in common:
     for carrier in rng.sample(collect.CARRIERS, 4):
       before, after = carrier.split('{}')

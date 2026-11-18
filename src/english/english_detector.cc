@@ -464,7 +464,8 @@ std::vector<EnglishDetector::Run> EnglishDetector::DetectAll(
                 reader_->ToKana(word, /*end_of_input=*/true);
             const bool at_end = last && end == body_end && waiting == 0;
             if (!(at_end && judge_->IsPrefixOfWord(word_kana))) {
-              const bool known = info->in_cspell && info->in_dictionary;
+              // Common in English and known to spell checkers for code.
+              const bool known = info->in_cspell && info->scowl_size == 35;
               const int word_cost =
                   Cost(word_kana) +
                   (known ? options_.known_word_cost_discount : 0);
