@@ -24,6 +24,8 @@ ABSL_FLAG(std::string, words, "", "Path of english_words.tsv.");
 ABSL_FLAG(int32_t, unreadable_margin, -1, "Overrides the option when >= 0.");
 ABSL_FLAG(int32_t, known_word_margin_bonus, -1, "Overrides the option when >= 0.");
 ABSL_FLAG(int32_t, natural_segment_cost, -1, "Overrides the option when >= 0.");
+ABSL_FLAG(int32_t, window, -1, "Overrides the option when >= 0.");
+ABSL_FLAG(int32_t, settled, -1, "Overrides the option when >= 0.");
 
 namespace {
 class ConverterJudge : public mozc::english::ReadingJudge {
@@ -90,6 +92,12 @@ int main(int argc, char** argv) {
   }
   if (absl::GetFlag(FLAGS_natural_segment_cost) >= 0) {
     options.natural_segment_cost = absl::GetFlag(FLAGS_natural_segment_cost);
+  }
+  if (absl::GetFlag(FLAGS_settled) >= 0) {
+    options.settled = absl::GetFlag(FLAGS_settled);
+  }
+  if (absl::GetFlag(FLAGS_window) >= 0) {
+    options.window = absl::GetFlag(FLAGS_window);
   }
   detector.set_options(options);
 

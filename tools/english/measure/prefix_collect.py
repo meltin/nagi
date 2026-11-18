@@ -83,10 +83,9 @@ def _generated(words, rng):
     keys = romaji.to_romaji(reading)
     if keys:
       yield 'japanese_words', keys, None
-  for reading in spoken_sentences():
-    keys = romaji.to_romaji(reading)
-    if keys:
-      yield 'japanese_text', keys, None
+  text = [keys for keys in map(romaji.to_romaji, spoken_sentences()) if keys]
+  for keys in text:
+    yield 'japanese_text', keys, None
   # Words that are common, known to spell checkers for code and in the dictionary.
   common = sorted(word for word, (size, sources) in words.items()
                   if size == 35 and sources == 'cd' and len(word) >= 3)
@@ -96,6 +95,13 @@ def _generated(words, rng):
       keys_before = romaji.to_romaji(before) if before else ''
       yield ('mixed_common', keys_before + word + romaji.to_romaji(after),
              (len(keys_before), len(keys_before) + len(word)))
+  # The same, between two real sentences: the composition is long enough for the
+  # detector to stop looking at its beginning while the word is in it.
+  for word in rng.sample(common, min(len(common), int(os.environ.get('NAGI_LONG', '1000')))):
+    before, after = rng.choice(collect.CARRIERS).split('{}')
+    head = rng.choice(text) + (romaji.to_romaji(before) if before else '')
+    yield ('mixed_long', head + word + romaji.to_romaji(after) + rng.choice(text),
+           (len(head), len(head) + len(word)))
   mixed = []
   for word in collect.english_sample(words, rng):
     for carrier in rng.sample(collect.CARRIERS, 6):
