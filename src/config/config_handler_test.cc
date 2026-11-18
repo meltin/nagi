@@ -139,6 +139,8 @@ TEST_F(ConfigHandlerTest, NagiFeaturesAreOnUnlessTurnedOff) {
   EXPECT_TRUE(ConfigHandler::DefaultConfig().use_live_conversion());
   EXPECT_TRUE(ConfigHandler::DefaultConfig().use_conversion_status_indicator());
   EXPECT_TRUE(ConfigHandler::DefaultConfig().use_zenz_correction());
+  EXPECT_TRUE(ConfigHandler::DefaultConfig()
+                  .show_candidate_window_on_initial_conversion());
 
   TempDirectory temp_dir = testing::MakeTempDirectoryOrDie();
   ConfigHandler::SetConfigFileNameForTesting(

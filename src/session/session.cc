@@ -2828,6 +2828,12 @@ bool Session::DeleteCandidateFromHistory(commands::Command* command) {
 bool Session::Convert(commands::Command* command) {
   command->mutable_output()->set_consumed(true);
   const std::string composition = context_->composer().GetQueryForConversion();
+  // As in Mozkey: only without live conversion, and only for the conversion
+  // that starts from the reading.
+  const bool show_candidate_window =
+      context_->state() == ImeContext::COMPOSITION &&
+      context_->GetConfig().show_candidate_window_on_initial_conversion() &&
+      !context_->GetConfig().use_live_conversion();
 
   // TODO(komatsu): Make a function like ConvertOrSpace.
   // Handle a space key on the ASCII composition mode.
@@ -2873,6 +2879,9 @@ bool Session::Convert(commands::Command* command) {
   }
 
   SetSessionState(ImeContext::CONVERSION, context_.get());
+  if (show_candidate_window) {
+    context_->mutable_converter()->SetCandidateListVisible(true);
+  }
   Output(command);
   return true;
 }

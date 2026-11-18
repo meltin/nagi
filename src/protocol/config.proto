@@ -383,6 +383,12 @@ message Config {
   // How long to wait after the preview appears before asking Zenz.
   optional uint32 zenz_delay_msec = 2005 [default = 500];
 
+  // Opens the candidate list on the first conversion key, when live
+  // conversion is off. With live conversion the text is converted already,
+  // so the first key moves to the next candidate and opens the list anyway.
+  optional bool show_candidate_window_on_initial_conversion = 2006
+      [default = false];
+
   //////////////////////////////////////////////////////////////
   //
   // Cloud (300-319)

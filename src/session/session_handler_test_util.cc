@@ -137,6 +137,7 @@ void SessionHandlerTestBase::ClearState() {
   config.set_use_live_conversion(false);
   config.set_use_conversion_status_indicator(false);
   config.set_use_zenz_correction(false);
+  config.set_show_candidate_window_on_initial_conversion(false);
   ConfigHandler::SetConfig(config);
 
   // CharacterFormManager is not automatically updated when the config is

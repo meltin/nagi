@@ -10750,6 +10750,38 @@ TEST_F(SessionTest, ConversionStatusFollowsTheState) {
             commands::Output::CONVERSION_STATUS_NONE);
 }
 
+// Nagi: without live conversion, the first conversion key can open the
+// candidate list at once.
+TEST_F(SessionTest, CandidateWindowOnInitialConversion) {
+  for (const bool enabled : {false, true}) {
+    for (const bool live : {false, true}) {
+      MockEngine engine;
+      std::shared_ptr<MockConverter> converter =
+          CreateEngineConverterMock(&engine);
+      Segments segments;
+      SetAiueo(&segments);
+      ConversionRequest default_request;
+      FillT13Ns(default_request, &segments);
+      EXPECT_CALL(*converter, StartConversion(_, _))
+          .WillRepeatedly(DoAll(SetArgPointee<1>(segments), Return(true)));
+
+      Session session(engine);
+      config::Config config;
+      config.set_show_candidate_window_on_initial_conversion(enabled);
+      config.set_use_live_conversion(live);
+      session.SetConfig(config);
+      InitSessionToPrecomposition(&session);
+      commands::Command command;
+      InsertCharacterChars("aiueo", &session, &command);
+      command.Clear();
+      session.Convert(&command);
+      // With live conversion the setting does nothing, as in Mozkey.
+      EXPECT_EQ(command.output().has_candidate_window(), enabled && !live)
+          << "enabled=" << enabled << " live=" << live;
+    }
+  }
+}
+
 // The product default turns it on (config_handler.cc). The proto default is off.
 TEST_F(SessionTest, ConversionStatusIsOffInABareConfig) {
   MockEngine engine;

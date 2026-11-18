@@ -93,6 +93,9 @@ void ApplyNagiDefaults(Config* config) {
   if (!config->has_use_zenz_correction()) {
     config->set_use_zenz_correction(true);
   }
+  if (!config->has_show_candidate_window_on_initial_conversion()) {
+    config->set_show_candidate_window_on_initial_conversion(true);
+  }
 }
 
 Config CreateDefaultConfig() {

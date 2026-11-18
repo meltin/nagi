@@ -285,6 +285,10 @@
         <translation>リアルタイム変換を有効にする</translation>
     </message>
     <message>
+        <source>Open the candidate list on the first conversion (when live conversion is off)</source>
+        <translation>初回の変換操作で候補ウィンドウを開く(ライブ変換オフのとき)</translation>
+    </message>
+    <message>
         <source>Live conversion</source>
         <translation>ライブ変換</translation>
     </message>
