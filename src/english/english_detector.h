@@ -72,8 +72,13 @@ class ReadingJudge {
   virtual int Cost(std::string_view reading) const = 0;
   // True if a longer dictionary word starts with |reading|.
   virtual bool IsPrefixOfWord(std::string_view reading) const = 0;
-  // Where the segments of the best conversion of |reading| end, in bytes.
-  virtual std::vector<size_t> SegmentEnds(std::string_view reading) const = 0;
+  // The segments of the best conversion of |reading|: where each ends, in
+  // bytes, and what it costs.
+  struct Segment {
+    size_t end = 0;
+    int cost = 0;
+  };
+  virtual std::vector<Segment> Segments(std::string_view reading) const = 0;
 };
 
 // Finds the English words in keys typed in a romaji composition.
@@ -105,6 +110,9 @@ class EnglishDetector {
     // readily: its margin grows and the cost its kana must exceed shrinks.
     int known_word_margin_bonus = 4500;
     int known_word_cost_discount = 2000;
+    // A segment of the kana reading that costs less than this is ordinary
+    // Japanese. A word that only touches such segments is not English.
+    int natural_segment_cost = 10000;
     // Added for every letter that is neither read as kana nor part of a run.
     int unread_letter_cost = 20000;
     // Added to a candidate's score for each of its letters.
@@ -140,7 +148,10 @@ class EnglishDetector {
                       bool end_of_input) const;
 
  private:
-  std::vector<Run> DetectAll(std::string_view keys, bool end_of_input) const;
+  // |begins_fresh| is false when |keys| were cut out of a longer composition
+  // at a place that may be inside a word: nothing English begins at offset 0.
+  std::vector<Run> DetectAll(std::string_view keys, bool end_of_input,
+                             bool begins_fresh = true) const;
   int Cost(const std::string& reading) const;
 
   const EnglishWords* words_;

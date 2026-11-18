@@ -538,9 +538,13 @@ bool Converter::ResizeSegments(Segments* segments,
 }
 
 int Converter::GetReadingCost(const absl::string_view reading,
-                              std::vector<size_t>* segment_ends) const {
+                              std::vector<size_t>* segment_ends,
+                              std::vector<int>* segment_costs) const {
   if (segment_ends != nullptr) {
     segment_ends->clear();
+  }
+  if (segment_costs != nullptr) {
+    segment_costs->clear();
   }
   if (reading.empty()) {
     return 0;
@@ -560,6 +564,9 @@ int Converter::GetReadingCost(const absl::string_view reading,
       return -1;
     }
     cost += segment.candidate(0).cost;
+    if (segment_costs != nullptr) {
+      segment_costs->push_back(segment.candidate(0).cost);
+    }
     if (segment_ends != nullptr) {
       segment_ends->push_back(
           (segment_ends->empty() ? 0 : segment_ends->back()) +

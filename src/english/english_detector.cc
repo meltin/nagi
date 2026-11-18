@@ -212,12 +212,16 @@ std::vector<EnglishDetector::Run> EnglishDetector::Detect(
   // starting where a syllable starts.
   size_t target = keys.size() - options_.window;
   std::vector<Run> runs;
+  // True if the window starts where a word is known to begin.
+  bool starts_at_word = false;
   for (const Run& run : *previous) {
     if (run.end <= target) {
       runs.push_back(run);
     } else {
       // A run across the edge of the window is looked at again as a whole.
-      target = std::min(target, run.begin);
+      if (run.begin <= target) {
+        target = run.begin;
+      }
       break;
     }
   }
@@ -226,20 +230,32 @@ std::vector<EnglishDetector::Run> EnglishDetector::Detect(
   while (begin < keys.size()) {
     const std::string head =
         reader_->ToKana(keys.substr(origin, begin - origin), false);
-    if (head.empty() ||
-        !absl::ascii_isalpha(static_cast<unsigned char>(head.back()))) {
+    // Not after an "n" that belongs to the next syllable ("na").
+    const bool splits_n =
+        begin > origin && keys[begin - 1] == 'n' &&
+        std::string_view("aiueoyn").find(keys[begin]) != std::string_view::npos;
+    if (!splits_n &&
+        (head.empty() ||
+         !absl::ascii_isalpha(static_cast<unsigned char>(head.back())))) {
       break;
     }
     ++begin;
   }
-  for (const Run& run : DetectAll(keys.substr(begin), end_of_input)) {
+  // The window starts at a syllable, which may be in the middle of a word,
+  // unless it starts right after a run or where a run began before.
+  for (const Run& run : *previous) {
+    starts_at_word = starts_at_word || run.begin == begin;
+  }
+  for (const Run& run : DetectAll(keys.substr(begin), end_of_input,
+                                  /*begins_fresh=*/begin == origin ||
+                                      starts_at_word)) {
     runs.push_back(Run{run.begin + begin, run.end + begin});
   }
   return runs;
 }
 
 std::vector<EnglishDetector::Run> EnglishDetector::DetectAll(
-    std::string_view keys, bool end_of_input) const {
+    std::string_view keys, bool end_of_input, bool begins_fresh) const {
   std::vector<Run> runs;
   if (keys.size() < kMinWordLength || !IsLowerLetters(keys)) {
     return runs;
@@ -278,21 +294,41 @@ std::vector<EnglishDetector::Run> EnglishDetector::DetectAll(
     const std::string reading_now =
         Reading(run_takes_end ? keys : keys.substr(0, body_end), runs,
                 /*end_of_input=*/true);
-    const std::vector<size_t> segment_ends = judge_->SegmentEnds(reading_now);
-    const auto at_segment_edge = [&](size_t key_offset) {
+    const std::vector<ReadingJudge::Segment> segments =
+        judge_->Segments(reading_now);
+    // The offset in |reading_now| of what comes before |key_offset| keys.
+    const auto reading_offset = [&](size_t key_offset) {
       std::vector<Run> before;
       for (const Run& run : runs) {
         if (run.end <= key_offset) {
           before.push_back(run);
         }
       }
-      const size_t offset =
-          Reading(keys.substr(0, std::min(key_offset, keys.size())), before,
-                  /*end_of_input=*/true)
-              .size();
+      return Reading(keys.substr(0, std::min(key_offset, keys.size())), before,
+                     /*end_of_input=*/true)
+          .size();
+    };
+    const auto at_segment_edge = [&](size_t key_offset) {
+      const size_t offset = reading_offset(key_offset);
       return offset == 0 || offset >= reading_now.size() ||
-             std::find(segment_ends.begin(), segment_ends.end(), offset) !=
-                 segment_ends.end();
+             std::any_of(segments.begin(), segments.end(),
+                         [offset](const ReadingJudge::Segment& segment) {
+                           return segment.end == offset;
+                         });
+    };
+    // True if every segment the keys [begin, end) fall in is ordinary Japanese.
+    const auto in_natural_segments = [&](size_t begin, size_t end) {
+      const size_t from = reading_offset(begin);
+      const size_t to = reading_offset(end);
+      size_t segment_begin = 0;
+      for (const ReadingJudge::Segment& segment : segments) {
+        if (segment_begin < to && segment.end > from &&
+            segment.cost >= options_.natural_segment_cost) {
+          return false;
+        }
+        segment_begin = segment.end;
+      }
+      return true;
     };
     int best_delta = 0;
     Run best;
@@ -304,6 +340,9 @@ std::vector<EnglishDetector::Run> EnglishDetector::DetectAll(
       const size_t stretch_end = last ? keys.size() : runs[index].begin;
       for (size_t begin = stretch_begin; begin + kMinWordLength <= stretch_end;
            ++begin) {
+        if (begin == 0 && !begins_fresh) {
+          continue;
+        }
         if (!reader_->ReadsAsKana(
                 keys.substr(stretch_begin, begin - stretch_begin))) {
           continue;
@@ -349,8 +388,10 @@ std::vector<EnglishDetector::Run> EnglishDetector::DetectAll(
           const int delta = cost_now - cost_of(with);
           const bool readable = reader_->ReadsAsKana(word);
           // While the keys around the word read as kana, Japanese is
-          // possible, and the word must begin where a Japanese word could
-          // end. A readable word must also end at such a place.
+          // possible. The word must begin where a Japanese word could end,
+          // and what it would replace must not be ordinary Japanese already:
+          // the converter cuts "ちめを|はかる" and finds "ちめを" costly, but
+          // "まだ|めに" is fine as it is and hides no "madame".
           const size_t kana_end = last ? body_end : stretch_end;
           const bool stretch_reads =
               kana_end >= stretch_begin &&
@@ -358,7 +399,7 @@ std::vector<EnglishDetector::Run> EnglishDetector::DetectAll(
                   keys.substr(stretch_begin, kana_end - stretch_begin));
           if (stretch_reads &&
               (!at_segment_edge(begin) ||
-               (readable && end <= body_end && !at_segment_edge(end)))) {
+               in_natural_segments(begin, std::min(end, body_end)))) {
             continue;
           }
           bool english = false;
@@ -423,6 +464,9 @@ std::vector<EnglishDetector::Run> EnglishDetector::DetectAll(
       continue;
     }
     for (size_t begin = 0; begin + kMinWordLength <= tail.size(); ++begin) {
+      if (tail_begin + begin == 0 && !begins_fresh) {
+        continue;
+      }
       if (index < runs.size() && tail_begin + begin > runs[index].begin) {
         break;  // It would start inside a run that explains more.
       }

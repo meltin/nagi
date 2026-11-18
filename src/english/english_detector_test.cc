@@ -34,22 +34,15 @@ class FakeJudge : public ReadingJudge {
   bool IsPrefixOfWord(std::string_view reading) const override {
     return prefixes_.contains(std::string(reading));
   }
-  // Every kana is its own segment, unless the test says otherwise.
-  std::vector<size_t> SegmentEnds(std::string_view reading) const override {
-    const auto it = segment_ends_.find(reading);
-    if (it != segment_ends_.end()) {
+  // The whole reading is one costly segment, unless the test says otherwise.
+  std::vector<Segment> Segments(std::string_view reading) const override {
+    const auto it = segments_.find(reading);
+    if (it != segments_.end()) {
       return it->second;
     }
-    std::vector<size_t> ends;
-    for (size_t i = 1; i <= reading.size(); ++i) {
-      if (i == reading.size() ||
-          (static_cast<unsigned char>(reading[i]) & 0xC0) != 0x80) {
-        ends.push_back(i);
-      }
-    }
-    return ends;
+    return {{reading.size(), 20000}};
   }
-  std::map<std::string, std::vector<size_t>, std::less<>> segment_ends_;
+  std::map<std::string, std::vector<Segment>, std::less<>> segments_;
 
   std::map<std::string, int, std::less<>> costs_;
   std::map<std::string, bool> prefixes_;
@@ -131,8 +124,8 @@ TEST_F(EnglishDetectorTest, WordDoesNotBeginInsideASyllable) {
 TEST_F(EnglishDetectorTest, WordDoesNotBeginInsideAJapaneseWord) {
   words_.Add("rase", {.scowl_size = 35});
   judge_.costs_["らせ"] = 20000;
-  // The converter keeps "しらせ" in one piece, so "rase" is inside a word.
-  judge_.segment_ends_["しらせがとどいた"] = {9, 12, 24};
+  // The converter keeps "しらせが" in one piece, which is ordinary Japanese.
+  judge_.segments_["しらせがとどいた"] = {{12, 5000}, {24, 5000}};
   EXPECT_EQ(Show("sirasegatodoita", true), "しらせがとどいた");
 }
 
@@ -145,6 +138,7 @@ TEST_F(EnglishDetectorTest, ReadableWordNeedsMoreThanBeingInTheList) {
   // "made" reads as "まで", which is ordinary Japanese.
   judge_.costs_["まで"] = 3500;
   judge_.costs_["までいく"] = 9000;
+  judge_.segments_["までいく"] = {{6, 3500}, {12, 4500}};
   EXPECT_EQ(Show("madeiku", true), "までいく");
   // "time" reads as "ちめ", which is hardly a word, and "timeをはかる" is not
   // much worse than "ちめをはかる".
@@ -170,6 +164,9 @@ TEST_F(EnglishDetectorTest, LongCompositionKeepsEarlierRuns) {
     keys.push_back(c);
     const std::vector<EnglishDetector::Run> previous = runs;
     runs = detector.Detect(keys, false, &previous);
+    // The word stays through every key, also while the window passes it.
+    ASSERT_FALSE(runs.empty()) << keys;
+    ASSERT_EQ(runs.front(), (EnglishDetector::Run{6, 12})) << keys;
   }
   ASSERT_GT(keys.size(), 60);
   ASSERT_FALSE(runs.empty());

@@ -23,6 +23,7 @@
 ABSL_FLAG(std::string, words, "", "Path of english_words.tsv.");
 ABSL_FLAG(int32_t, unreadable_margin, -1, "Overrides the option when >= 0.");
 ABSL_FLAG(int32_t, known_word_margin_bonus, -1, "Overrides the option when >= 0.");
+ABSL_FLAG(int32_t, natural_segment_cost, -1, "Overrides the option when >= 0.");
 
 namespace {
 class ConverterJudge : public mozc::english::ReadingJudge {
@@ -35,10 +36,15 @@ class ConverterJudge : public mozc::english::ReadingJudge {
   bool IsPrefixOfWord(std::string_view reading) const override {
     return converter_->IsReadingPrefixOfWord(reading);
   }
-  std::vector<size_t> SegmentEnds(std::string_view reading) const override {
+  std::vector<Segment> Segments(std::string_view reading) const override {
     std::vector<size_t> ends;
-    converter_->GetReadingCost(reading, &ends);
-    return ends;
+    std::vector<int> costs;
+    converter_->GetReadingCost(reading, &ends, &costs);
+    std::vector<Segment> segments;
+    for (size_t i = 0; i < ends.size(); ++i) {
+      segments.push_back({ends[i], costs[i]});
+    }
+    return segments;
   }
 
  private:
@@ -81,6 +87,9 @@ int main(int argc, char** argv) {
   if (absl::GetFlag(FLAGS_known_word_margin_bonus) >= 0) {
     options.known_word_margin_bonus =
         absl::GetFlag(FLAGS_known_word_margin_bonus);
+  }
+  if (absl::GetFlag(FLAGS_natural_segment_cost) >= 0) {
+    options.natural_segment_cost = absl::GetFlag(FLAGS_natural_segment_cost);
   }
   detector.set_options(options);
 
