@@ -329,8 +329,13 @@ class Session {
   // found in them, which the composition shows as typed.
   std::string english_keys_;
   std::vector<english::EnglishDetector::Run> english_runs_;
-  // The user asked for kana in this composition (F6).
-  bool english_suppressed_ = false;
+  // What the user switched in this composition with F10 and F6: the keys up
+  // to the last switch, the words made English, the words made kana, and
+  // what to learn from them when the composition is committed.
+  std::string english_switched_keys_;
+  std::vector<english::EnglishDetector::Run> english_pinned_;
+  std::vector<std::string> english_kana_words_;
+  std::vector<std::pair<std::string, bool>> english_lessons_;
 
   std::unique_ptr<ImeContext> CreateContext(
       const EngineInterface& engine) const;
@@ -454,6 +459,11 @@ class Session {
       std::string_view committed);
   // Commits what is displayed.
   bool CommitDisplayed(commands::Command* command);
+  // F10 (|english|): the word that ends where the typing is becomes English.
+  // F6: the last word shown in English goes back to kana. False when there is
+  // no such word, and the key does what it does in Mozc.
+  bool SwitchLastEnglishWord(bool english);
+  void ForgetEnglishSwitches();
   // True if the composition ends with a whole English word found by it.
   bool EndsWithEnglishWord() const;
   // The converted head that still matches the kana being typed, and how many

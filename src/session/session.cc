@@ -667,18 +667,33 @@ std::vector<english::EnglishDetector::Run> Session::FindEnglish(
   const english::ConverterJudge judge(context_->converter().GetConverter());
   english::EnglishDetector detector(&words, &reader, &judge);
   // Like the engine's own history: nothing is recalled in incognito mode.
-  const english::LearnedWords learned =
-      context_->GetConfig().incognito_mode()
-          ? english::LearnedWords()
-          : english::GetLearnedEnglishWords();
+  english::LearnedWords learned = context_->GetConfig().incognito_mode()
+                                      ? english::LearnedWords()
+                                      : english::GetLearnedEnglishWords();
+  // What the user switched in this composition comes first.
+  for (const std::string& word : english_kana_words_) {
+    learned[word] = false;
+  }
   detector.set_learned(&learned);
+  // A word the user switched to English stays, and ends a stretch of romaji
+  // like a separator.
+  std::vector<bool> fixed(keys.size() + 1, false);
+  for (size_t i = 0; i < keys.size(); ++i) {
+    fixed[i] = IsEnglishSeparator(keys[i]);
+  }
+  for (const Run& run : english_pinned_) {
+    if (run.end <= keys.size()) {
+      std::fill(fixed.begin() + run.begin, fixed.begin() + run.end, true);
+      runs.push_back(run);
+    }
+  }
 
   // The stretches of romaji between the separators. Every stretch but the
   // last is finished: its consonants at the end cannot become kana.
   size_t begin = 0;
   while (begin <= keys.size()) {
     size_t end = begin;
-    while (end < keys.size() && !IsEnglishSeparator(keys[end])) {
+    while (end < keys.size() && !fixed[end]) {
       ++end;
     }
     const bool last = end == keys.size();
@@ -700,18 +715,86 @@ std::vector<english::EnglishDetector::Run> Session::FindEnglish(
     }
     begin = end + 1;
   }
+  std::sort(runs.begin(), runs.end(),
+            [](const Run& a, const Run& b) { return a.begin < b.begin; });
   return runs;
+}
+
+bool Session::SwitchLastEnglishWord(bool english) {
+  using Run = english::EnglishDetector::Run;
+  composer::Composer* composer = context_->mutable_composer();
+  const std::string keys = composer->GetRawString();
+  if (!CanFindEnglish(keys) || english_keys_ != keys ||
+      (context_->state() != ImeContext::COMPOSITION && !IsLiveConversion()) ||
+      composer->GetInputMode() != transliteration::HIRAGANA ||
+      composer->GetOutputMode() != transliteration::HIRAGANA ||
+      composer->GetCursor() != composer->GetLength()) {
+    return false;
+  }
+  Run word;
+  if (english) {
+    // The longest word that ends where the typing is, after keys that read
+    // as kana: "note" in "kyouhanote".
+    const english::RomajiReader reader(composer->table());
+    const english::EnglishWords& words = english::GetEnglishWords(reader);
+    const english::LearnedWords learned = english::GetLearnedEnglishWords();
+    size_t stretch = keys.size();
+    while (stretch > 0 && !IsEnglishSeparator(keys[stretch - 1]) &&
+           std::none_of(english_runs_.begin(), english_runs_.end(),
+                        [stretch](const Run& run) {
+                          return run.end == stretch;
+                        })) {
+      --stretch;
+    }
+    const std::string_view tail = std::string_view(keys).substr(stretch);
+    size_t begin = 0;
+    for (; begin + 3 <= tail.size(); ++begin) {
+      const std::string_view candidate = tail.substr(begin);
+      const auto taught = learned.find(candidate);
+      if ((words.Find(candidate) != nullptr ||
+           (taught != learned.end() && taught->second)) &&
+          reader.ReadsAsKana(tail.substr(0, begin))) {
+        break;
+      }
+    }
+    if (begin + 3 > tail.size()) {
+      return false;  // No word there. The key does what it does in Mozc.
+    }
+    word = Run{stretch + begin, keys.size()};
+    english_pinned_.push_back(word);
+  } else {
+    // The last word shown in English.
+    if (english_runs_.empty()) {
+      return false;
+    }
+    word = english_runs_.back();
+    std::erase(english_pinned_, word);
+    english_kana_words_.push_back(keys.substr(word.begin, word.end - word.begin));
+  }
+  english_switched_keys_ = keys.substr(0, word.end);
+  english_lessons_.emplace_back(keys.substr(word.begin, word.end - word.begin),
+                                english);
+  if (IsLiveConversion()) {
+    LeaveLiveConversion();
+  }
+  english_runs_ = FindEnglish(keys, /*end_of_input=*/false, /*continues=*/false);
+  composer->EditErase();
+  english::TypeWithRuns(keys, english_runs_, composer);
+  return true;
 }
 
 void Session::ApplyAutomaticEnglish(bool end_of_input) {
   composer::Composer* composer = context_->mutable_composer();
   const std::string keys = composer->GetRawString();
-  if (keys.size() <= 1) {
-    english_suppressed_ = false;  // A new composition.
+  // What the user switched with F10 or F6 holds while the keys go on from
+  // there.
+  if (!english_switched_keys_.empty() &&
+      !absl::StartsWith(keys, english_switched_keys_)) {
+    ForgetEnglishSwitches();
   }
   // Only what is typed at the end of a composition shown as kana. With F10
   // or the like the user chose how to show it.
-  if (english_suppressed_ || !CanFindEnglish(keys) || context_->state() != ImeContext::COMPOSITION ||
+  if (!CanFindEnglish(keys) || context_->state() != ImeContext::COMPOSITION ||
       composer->GetInputMode() != transliteration::HIRAGANA ||
       composer->GetOutputMode() != transliteration::HIRAGANA ||
       composer->GetCursor() != composer->GetLength()) {
@@ -737,12 +820,33 @@ void Session::ApplyAutomaticEnglish(bool end_of_input) {
   }
 }
 
+void Session::ForgetEnglishSwitches() {
+  english_switched_keys_.clear();
+  english_pinned_.clear();
+  english_kana_words_.clear();
+  english_lessons_.clear();
+}
+
 void Session::LearnEnglishFromCommit(
     std::string_view keys,
     const std::vector<english::EnglishDetector::Run>* shown,
     std::string_view committed) {
-  if (!CanFindEnglish(keys) || context_->GetConfig().incognito_mode() ||
-      std::any_of(keys.begin(), keys.end(), IsEnglishSeparator)) {
+  if (!CanFindEnglish(keys) || context_->GetConfig().incognito_mode()) {
+    return;
+  }
+  const std::string text = absl::AsciiStrToLower(
+      japanese_util::FullWidthAsciiToHalfWidthAscii(committed));
+  // The user switched words one by one: those are the lessons, when the
+  // commit agrees with them.
+  if (!english_lessons_.empty()) {
+    for (const auto& [word, english] : english_lessons_) {
+      if ((text.find(word) != std::string::npos) == english) {
+        english::LearnEnglishWord(word, english);
+      }
+    }
+    return;
+  }
+  if (std::any_of(keys.begin(), keys.end(), IsEnglishSeparator)) {
     return;
   }
   // What the automatic input mode made of these keys by itself: what it
@@ -751,8 +855,6 @@ void Session::LearnEnglishFromCommit(
       shown != nullptr
           ? *shown
           : FindEnglish(keys, /*end_of_input=*/true, /*continues=*/false);
-  const std::string text = absl::AsciiStrToLower(
-      japanese_util::FullWidthAsciiToHalfWidthAscii(committed));
   if (runs.empty()) {
     // Committed as typed, with F10 or the like: the keys are a word. Keys
     // that read as kana and are in no list are more likely a phrase.
@@ -765,9 +867,11 @@ void Session::LearnEnglishFromCommit(
     }
     return;
   }
-  // A word shown in English that the user did not commit is not one.
-  for (const english::EnglishDetector::Run& run : runs) {
-    const std::string_view word = keys.substr(run.begin, run.end - run.begin);
+  // A word shown in English that the user did not commit is not one. With
+  // several words there is no telling which one the user meant.
+  if (runs.size() == 1) {
+    const std::string_view word =
+        keys.substr(runs[0].begin, runs[0].end - runs[0].begin);
     if (text.find(word) == std::string::npos) {
       english::LearnEnglishWord(word, /*english=*/false);
     }
@@ -904,6 +1008,23 @@ bool Session::SendKeyLiveConversionState(commands::Command* command) {
     return DoNothing(command);
   }
   switch (conversion_command) {
+    case keymap::ConversionState::TRANSLATE_HALF_ASCII:
+    case keymap::ConversionState::CONVERT_TO_HALF_ALPHANUMERIC:
+    case keymap::ConversionState::DISPLAY_AS_HIRAGANA:
+    case keymap::ConversionState::CONVERT_TO_HIRAGANA:
+      // Nagi automatic input mode: F10 and F6 switch one word of the reading,
+      // as they do without the preview.
+      if (SwitchLastEnglishWord(
+              conversion_command ==
+                  keymap::ConversionState::TRANSLATE_HALF_ASCII ||
+              conversion_command ==
+                  keymap::ConversionState::CONVERT_TO_HALF_ALPHANUMERIC)) {
+        command->mutable_output()->set_consumed(true);
+        OutputComposition(command);
+        return true;
+      }
+      EndLiveConversion();
+      return SendKeyConversionState(command);
     case keymap::ConversionState::INSERT_CHARACTER:
       // InsertCharacter() leaves the live conversion by itself.
       return InsertCharacter(command);
@@ -2507,8 +2628,14 @@ bool Session::Commit(commands::Command* command) {
   const bool result = CommitDisplayed(command);
   if (!keys.empty() && context_->composer().Empty() &&
       command->output().result().type() == commands::Result::STRING) {
+    if (!absl::StartsWith(keys, english_switched_keys_)) {
+      ForgetEnglishSwitches();
+    }
     LearnEnglishFromCommit(keys, is_shown ? &shown : nullptr,
                            command->output().result().value());
+  }
+  if (context_->composer().Empty()) {
+    ForgetEnglishSwitches();
   }
   return result;
 }
@@ -2740,6 +2867,11 @@ bool Session::ConvertToTransliteration(
 }
 
 bool Session::ConvertToHiragana(commands::Command* command) {
+  if (SwitchLastEnglishWord(/*english=*/false)) {  // Nagi
+    command->mutable_output()->set_consumed(true);
+    OutputComposition(command);
+    return true;
+  }
   return ConvertToTransliteration(command, transliteration::HIRAGANA);
 }
 
@@ -2756,6 +2888,11 @@ bool Session::ConvertToFullASCII(commands::Command* command) {
 }
 
 bool Session::ConvertToHalfASCII(commands::Command* command) {
+  if (SwitchLastEnglishWord(/*english=*/true)) {  // Nagi
+    command->mutable_output()->set_consumed(true);
+    OutputComposition(command);
+    return true;
+  }
   return ConvertToTransliteration(command, transliteration::HALF_ASCII);
 }
 
@@ -2776,20 +2913,15 @@ bool Session::SwitchKanaType(commands::Command* command) {
 
 bool Session::DisplayAsHiragana(commands::Command* command) {
   command->mutable_output()->set_consumed(true);
+  // Nagi: the last word shown in English goes back to kana.
+  if (SwitchLastEnglishWord(/*english=*/false)) {
+    OutputComposition(command);
+    return true;
+  }
   if (context_->state() == ImeContext::CONVERSION) {
     return ConvertToHiragana(command);
   } else {  // context_->state() == ImeContext::COMPOSITION
-    // Nagi: the key for "this is kana". English words found by the automatic
-    // input mode go back to kana, for the rest of this composition.
-    composer::Composer* composer = context_->mutable_composer();
-    const std::string keys = composer->GetRawString();
-    if (CanFindEnglish(keys) && english_keys_ == keys) {
-      english_suppressed_ = true;
-      english_runs_.clear();
-      composer->EditErase();
-      english::TypeWithRuns(keys, english_runs_, composer);
-    }
-    composer->SetOutputMode(transliteration::HIRAGANA);
+    context_->mutable_composer()->SetOutputMode(transliteration::HIRAGANA);
     OutputComposition(command);
     return true;
   }
@@ -2832,6 +2964,11 @@ bool Session::TranslateFullASCII(commands::Command* command) {
 
 bool Session::TranslateHalfASCII(commands::Command* command) {
   command->mutable_output()->set_consumed(true);
+  // Nagi: the word just typed becomes English.
+  if (SwitchLastEnglishWord(/*english=*/true)) {
+    OutputComposition(command);
+    return true;
+  }
   if (context_->state() == ImeContext::CONVERSION) {
     return ConvertToHalfASCII(command);
   } else {  // context_->state() == ImeContext::COMPOSITION
