@@ -23,7 +23,13 @@ sudo installer -pkg "$pkg" -target /
 for job in Converter Renderer; do
   label="org.nagi.inputmethod.Japanese.$job"
   launchctl bootout "gui/$UID/$label" 2>/dev/null || true
-  launchctl bootstrap "gui/$UID" "/Library/LaunchAgents/$label.plist"
+  # bootout returns before a running job is gone, and bootstrap fails until then
+  # ("Bootstrap failed: 5: Input/output error").
+  for try in {1..20}; do
+    launchctl bootstrap "gui/$UID" "/Library/LaunchAgents/$label.plist" 2>/dev/null && break
+    sleep 0.5
+  done
+  launchctl print "gui/$UID/$label" >/dev/null || { echo "Could not reload $label. Log out and in."; exit 1; }
 done
 
 # macOS starts a new one on the next key. llama-server goes with NagiConverter.
