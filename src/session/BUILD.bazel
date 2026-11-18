@@ -501,6 +501,7 @@ mozc_cc_library(
 
 # Types romaji through a real session to check live conversion and Zenz.
 #   bazelisk run //session:nagi_typing_main -- kyouhaiitenkidesu
+# A "/" in the keys is a pause: kyouha/iitenkidesu
 mozc_cc_binary(
     name = "nagi_typing_main",
     testonly = 1,

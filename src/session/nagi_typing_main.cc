@@ -17,6 +17,8 @@
 #include <utility>
 
 #include "absl/flags/flag.h"
+#include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "base/file_util.h"
@@ -31,8 +33,8 @@
 #include "zenz/zenz_client.h"
 
 ABSL_FLAG(bool, zenz, true, "Correct the preview with Zenz.");
-ABSL_FLAG(uint32_t, live_delay_msec, 200, "Delay of live conversion.");
-ABSL_FLAG(uint32_t, zenz_delay_msec, 0, "Delay before asking Zenz.");
+ABSL_FLAG(uint32_t, live_delay_msec, 228, "Delay of live conversion.");
+ABSL_FLAG(uint32_t, zenz_delay_msec, 500, "Delay before asking Zenz.");
 ABSL_FLAG(std::string, profile, "",
           "Profile directory for history and settings. A temporary directory "
           "when empty, so that the real profile is not touched.");
@@ -162,30 +164,35 @@ int main(int argc, char** argv) {
     }
     std::cout << "== " << keys << std::endl;
     Output output;
-    for (const char c : keys) {
-      KeyEvent key;
-      key.set_key_code(c);
-      output = typist.SendKey(key);
-    }
-    const absl::Time last_key = absl::Now();
-    std::string shown = PreeditText(output);
-    std::string status = StatusName(output);
-    std::cout << "     0ms  " << status << "\t" << shown << std::endl;
-
-    // Follow the delayed callbacks until the session stops asking.
     int callbacks = 0;
-    while (output.has_callback() && callbacks < 1000) {
-      absl::SleepFor(absl::Milliseconds(output.callback().delay_millisec()));
-      output = typist.SendCallback(output);
-      ++callbacks;
-      const std::string now_shown = PreeditText(output);
-      const std::string now_status = StatusName(output);
-      if (now_shown != shown || now_status != status) {
-        shown = now_shown;
-        status = now_status;
-        const int64_t msec = absl::ToInt64Milliseconds(absl::Now() - last_key);
-        std::cout.width(6);
-        std::cout << msec << "ms  " << status << "\t" << shown << std::endl;
+    // "/" is a pause: the delayed callbacks run before the typing goes on.
+    for (const absl::string_view chunk : absl::StrSplit(keys, '/')) {
+      for (const char c : chunk) {
+        KeyEvent key;
+        key.set_key_code(c);
+        output = typist.SendKey(key);
+        std::cout << "     key  " << StatusName(output) << "\t"
+                  << PreeditText(output) << std::endl;
+      }
+      const absl::Time last_key = absl::Now();
+      std::string shown = PreeditText(output);
+      std::string status = StatusName(output);
+
+      // Follow the delayed callbacks until the session stops asking.
+      while (output.has_callback() && callbacks < 1000) {
+        absl::SleepFor(absl::Milliseconds(output.callback().delay_millisec()));
+        output = typist.SendCallback(output);
+        ++callbacks;
+        const std::string now_shown = PreeditText(output);
+        const std::string now_status = StatusName(output);
+        if (now_shown != shown || now_status != status) {
+          shown = now_shown;
+          status = now_status;
+          const int64_t msec =
+              absl::ToInt64Milliseconds(absl::Now() - last_key);
+          std::cout.width(6);
+          std::cout << msec << "ms  " << status << "\t" << shown << std::endl;
+        }
       }
     }
 
