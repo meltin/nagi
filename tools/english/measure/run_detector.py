@@ -31,6 +31,18 @@ def main():
   inputs = [(name, keys.replace(',', ''), wanted.replace('、', ''))
             for name, keys, wanted in prefix_collect.inputs(words, random.Random(20261118))]
   inputs = [item for item in inputs if re.fullmatch(r'[a-z-]+', item[1])]
+  # NAGI_SETS=held_out_mixed,japanese_text runs only those sets; NAGI_LIMIT=1000 runs
+  # at most that many inputs of each set. For a quick look while tuning.
+  if os.environ.get('NAGI_SETS'):
+    inputs = [item for item in inputs if item[0] in os.environ['NAGI_SETS'].split(',')]
+  if os.environ.get('NAGI_LIMIT'):
+    seen = collections.Counter()
+    limited = []
+    for item in inputs:
+      seen[item[0]] += 1
+      if seen[item[0]] <= int(os.environ['NAGI_LIMIT']):
+        limited.append(item)
+    inputs = limited
   result = subprocess.run([TOOL, '--words=' + candidates.WORDS_PATH] + flags,
                           input='\n'.join(keys for _, keys, _ in inputs) + '\n',
                           capture_output=True, text=True, check=True)

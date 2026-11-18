@@ -9,6 +9,7 @@
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/flags/flag.h"
 #include "base/init_mozc.h"
@@ -47,10 +48,20 @@ int main(int argc, char** argv) {
     }
     return 0;
   }
+  // cost, whether a longer word starts with it, the reading, and the reading
+  // cut where the converter cuts it.
   const auto print = [&converter](const std::string& reading) {
-    std::cout << converter.GetReadingCost(reading) << "\t"
+    std::vector<size_t> ends;
+    const int cost = converter.GetReadingCost(reading, &ends);
+    std::string cut;
+    size_t begin = 0;
+    for (const size_t end : ends) {
+      cut += (cut.empty() ? "" : "|") + reading.substr(begin, end - begin);
+      begin = end;
+    }
+    std::cout << cost << "\t"
               << (converter.IsReadingPrefixOfWord(reading) ? "prefix" : "-")
-              << "\t" << reading << "\n";
+              << "\t" << reading << "\t" << cut << "\n";
   };
   for (int i = 1; i < argc; ++i) {
     print(argv[i]);
