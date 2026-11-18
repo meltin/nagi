@@ -1,0 +1,108 @@
+// Copyright 2026 The Nagi Authors.
+// Use of this source code is governed by the BSD 3-Clause license in LICENSE.
+
+// Types keys one at a time and prints what the automatic input mode would
+// show after each key, for measuring it (tools/english/measure).
+//   echo kyouhagoogledekensaku | bazel-bin/english/english_detector_main --words=PATH
+// Output: keys, then one display per key, separated by tabs.
+
+#include <chrono>
+#include <iostream>
+#include <memory>
+#include <string>
+#include <utility>
+
+#include "absl/flags/flag.h"
+#include "base/init_mozc.h"
+#include "composer/table.h"
+#include "converter/converter.h"
+#include "data_manager/oss/oss_data_manager.h"
+#include "engine/engine.h"
+#include "english/english_detector.h"
+
+ABSL_FLAG(std::string, words, "", "Path of english_words.tsv.");
+ABSL_FLAG(int32_t, unreadable_margin, -1, "Overrides the option when >= 0.");
+ABSL_FLAG(int32_t, known_word_margin_bonus, -1, "Overrides the option when >= 0.");
+
+namespace {
+class ConverterJudge : public mozc::english::ReadingJudge {
+ public:
+  explicit ConverterJudge(const mozc::converter::Converter* converter)
+      : converter_(converter) {}
+  int Cost(std::string_view reading) const override {
+    return converter_->GetReadingCost(reading);
+  }
+  bool IsPrefixOfWord(std::string_view reading) const override {
+    return converter_->IsReadingPrefixOfWord(reading);
+  }
+
+ private:
+  const mozc::converter::Converter* converter_;
+};
+}  // namespace
+
+int main(int argc, char** argv) {
+  mozc::InitMozc(argv[0], &argc, &argv);
+  auto engine = mozc::Engine::CreateEngine(
+      std::make_unique<const mozc::oss::OssDataManager>());
+  mozc::composer::Table table;
+  if (!engine.ok() || !table.LoadFromFile("system://romanji-hiragana.tsv")) {
+    std::cerr << "Cannot create the engine or load the romaji table." << std::endl;
+    return 1;
+  }
+  const mozc::english::RomajiReader reader(&table);
+  mozc::english::EnglishWords words;
+  if (!words.LoadFromFile(absl::GetFlag(FLAGS_words))) {
+    std::cerr << "Cannot read --words." << std::endl;
+    return 1;
+  }
+  // Romanized Japanese names that only the conversion dictionary lists.
+  std::vector<std::string> names;
+  for (const auto& [word, info] : words.words()) {
+    if (info.scowl_size == 0 && !info.in_cspell && reader.ReadsAsKana(word)) {
+      names.push_back(word);
+    }
+  }
+  for (const std::string& name : names) {
+    words.Remove(name);
+  }
+
+  const ConverterJudge judge(&(*engine)->GetNagiConverterForTesting());
+  mozc::english::EnglishDetector detector(&words, &reader, &judge);
+  mozc::english::EnglishDetector::Options options;
+  if (absl::GetFlag(FLAGS_unreadable_margin) >= 0) {
+    options.unreadable_margin = absl::GetFlag(FLAGS_unreadable_margin);
+  }
+  if (absl::GetFlag(FLAGS_known_word_margin_bonus) >= 0) {
+    options.known_word_margin_bonus =
+        absl::GetFlag(FLAGS_known_word_margin_bonus);
+  }
+  detector.set_options(options);
+
+  std::string keys;
+  int64_t total_micros = 0;
+  int64_t max_micros = 0;
+  int64_t key_count = 0;
+  while (std::getline(std::cin, keys)) {
+    std::cout << keys;
+    for (size_t typed = 1; typed <= keys.size(); ++typed) {
+      const std::string_view prefix = std::string_view(keys).substr(0, typed);
+      const auto start = std::chrono::steady_clock::now();
+      // The last display is what is converted or committed.
+      const auto runs = detector.Detect(prefix, typed == keys.size());
+      const int64_t micros =
+          std::chrono::duration_cast<std::chrono::microseconds>(
+              std::chrono::steady_clock::now() - start)
+              .count();
+      total_micros += micros;
+      max_micros = std::max(max_micros, micros);
+      ++key_count;
+      std::cout << '\t' << detector.Display(prefix, runs, typed == keys.size());
+    }
+    std::cout << '\n';
+  }
+  std::cerr << "keys " << key_count << "  mean "
+            << (key_count ? total_micros / key_count : 0) << " us  max "
+            << max_micros << " us" << std::endl;
+  return 0;
+}

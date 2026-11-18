@@ -604,6 +604,7 @@ mozc_cc_library(
         "//engine:__pkg__",
         "//prediction:__pkg__",
         "//rewriter:__pkg__",
+        "//english:__pkg__",  # Nagi
     ],
     deps = [
         ":attribute",

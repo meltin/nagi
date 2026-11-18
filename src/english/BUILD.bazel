@@ -1,0 +1,47 @@
+# Nagi: tells English words from romaji in a composition (automatic input mode).
+
+load(
+    "//:build_defs.bzl",
+    "mozc_cc_binary",
+    "mozc_cc_library",
+    "mozc_cc_test",
+)
+
+package(default_visibility = ["//:__subpackages__"])
+
+mozc_cc_library(
+    name = "english_detector",
+    srcs = ["english_detector.cc"],
+    hdrs = ["english_detector.h"],
+    deps = [
+        "//composer:table",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+mozc_cc_binary(
+    name = "english_detector_main",
+    testonly = 1,
+    srcs = ["english_detector_main.cc"],
+    deps = [
+        ":english_detector",
+        "//base:init_mozc",
+        "//composer:table",
+        "//converter",
+        "//data_manager/oss:oss_data_manager",
+        "//engine",
+        "@com_google_absl//absl/flags:flag",
+    ],
+)
+
+mozc_cc_test(
+    name = "english_detector_test",
+    size = "small",
+    srcs = ["english_detector_test.cc"],
+    deps = [
+        ":english_detector",
+        "//composer:table",
+        "//testing:gunit_main",
+    ],
+)
