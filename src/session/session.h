@@ -436,6 +436,8 @@ class Session {
   // may still become kana; with |end_of_input|, before converting or
   // committing, they cannot.
   void ApplyAutomaticEnglish(bool end_of_input);
+  // True if the composition ends with a whole English word found by it.
+  bool EndsWithEnglishWord() const;
   // The converted head that still matches the kana being typed, and how many
   // bytes of that kana it stands for. False when nothing can be kept.
   bool GetKeptConversion(std::string* value, size_t* raw_size) const;

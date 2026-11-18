@@ -674,6 +674,20 @@ void Session::ApplyAutomaticEnglish(bool end_of_input) {
   }
 }
 
+bool Session::EndsWithEnglishWord() const {
+  const composer::Composer& composer = context_->composer();
+  if (english_runs_.empty() || composer.table() == nullptr ||
+      english_keys_ != composer.GetRawString() ||
+      english_runs_.back().end != english_keys_.size()) {
+    return false;
+  }
+  // A whole word, not the beginning of one still being typed.
+  const english::EnglishDetector::Run& run = english_runs_.back();
+  return english::GetEnglishWords(english::RomajiReader(composer.table()))
+             .Find(std::string_view(english_keys_)
+                       .substr(run.begin, run.end - run.begin)) != nullptr;
+}
+
 void Session::ClearKeptConversion() {
   kept_zenz_span_ = LiveSpan();
   kept_engine_spans_.clear();
@@ -859,8 +873,10 @@ void Session::MaybeScheduleLiveConversion(commands::Command* command) {
     command->mutable_output()->set_conversion_status(
         commands::Output::CONVERSION_STATUS_ENGINE);
   }
-  // Wait while a romaji sequence is still open, as in "sy" or "あいうk".
-  if (absl::ascii_isalpha(static_cast<unsigned char>(reading.back()))) {
+  // Wait while a romaji sequence is still open, as in "sy" or "あいうk". An
+  // English word at the end is not one.
+  if (absl::ascii_isalpha(static_cast<unsigned char>(reading.back())) &&
+      !EndsWithEnglishWord()) {
     return;
   }
   if (config.use_zenz_correction()) {
@@ -891,6 +907,8 @@ bool Session::ApplyLiveConversion(commands::Command* command) {
     }
     return true;
   }
+  // The typing paused: consonants at the end are not kana in progress.
+  ApplyAutomaticEnglish(/*end_of_input=*/true);
   // Read these before the state changes. The reading is what Zenz converts,
   // and converting drops the suggestions that typing left on screen.
   const std::string reading = context_->composer().GetQueryForConversion();
