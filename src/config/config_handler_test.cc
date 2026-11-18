@@ -303,7 +303,7 @@ TEST_F(ConfigHandlerTest, GetDefaultConfig) {
   constexpr std::array<TestCase, 13> kTestCases = {{
       // "ア"
       {"ア", Config::FULL_WIDTH, Config::FULL_WIDTH},
-      {"A", Config::FULL_WIDTH, Config::LAST_FORM},
+      {"A", Config::FULL_WIDTH, Config::HALF_WIDTH},  // Nagi
       {"0", Config::FULL_WIDTH, Config::LAST_FORM},
       {"(){}[]", Config::FULL_WIDTH, Config::LAST_FORM},
       {".,", Config::FULL_WIDTH, Config::LAST_FORM},

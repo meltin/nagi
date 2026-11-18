@@ -106,7 +106,9 @@ Config CreateDefaultConfig() {
   constexpr Config::CharacterForm kLastForm = Config::LAST_FORM;
   // "ア"
   AddCharacterFormRule("ア", kFullWidth, kFullWidth, &config);
-  AddCharacterFormRule("A", kFullWidth, kLastForm, &config);
+  // Nagi: letters convert to half width. Mozc uses the form committed last,
+  // which starts as full width and turned "push" into "ｐｕｓｈ".
+  AddCharacterFormRule("A", kFullWidth, Config::HALF_WIDTH, &config);
   AddCharacterFormRule("0", kFullWidth, kLastForm, &config);
   AddCharacterFormRule("(){}[]", kFullWidth, kLastForm, &config);
   AddCharacterFormRule(".,", kFullWidth, kLastForm, &config);
