@@ -299,8 +299,8 @@ std::vector<EnglishDetector::Run> EnglishDetector::DetectAll(
     return Cost(reading) + static_cast<int>(letters) * options_.unread_letter_cost;
   };
 
-  // Where the words taught not to be English are. Nothing English begins
-  // inside one: not "tests" or "est" where "test" is kana.
+  // Where the words taught not to be English are. Nothing English overlaps
+  // one: not "tests", "est" or "totes" where "test" is kana.
   std::vector<Run> kana_spans;
   if (learned_ != nullptr) {
     for (const auto& [word, english] : *learned_) {
@@ -310,10 +310,10 @@ std::vector<EnglishDetector::Run> EnglishDetector::DetectAll(
       }
     }
   }
-  const auto untaught = [&kana_spans](size_t begin) {
+  const auto untaught = [&kana_spans](size_t begin, size_t end) {
     return std::any_of(kana_spans.begin(), kana_spans.end(),
-                       [begin](const Run& span) {
-                         return span.begin <= begin && begin < span.end;
+                       [begin, end](const Run& span) {
+                         return begin < span.end && span.begin < end;
                        });
   };
 
@@ -397,7 +397,7 @@ std::vector<EnglishDetector::Run> EnglishDetector::DetectAll(
             const auto it = learned_->find(word);
             taught = it != learned_->end() && it->second;
           }
-          if (!taught && untaught(begin)) {
+          if (!taught && untaught(begin, end)) {
             continue;
           }
           static const EnglishWords::Info kTaughtInfo;
@@ -444,7 +444,9 @@ std::vector<EnglishDetector::Run> EnglishDetector::DetectAll(
                   keys.substr(stretch_begin, kana_end - stretch_begin));
           if (stretch_reads &&
               (!at_segment_edge(begin) ||
-               // A taught word is judged by its cost below instead.
+               // A taught word is judged by its cost below instead. It
+               // still begins at an edge: without that, "note" turned up
+               // in "おばのてで" and "made" in "いまでは".
                (!taught &&
                 in_natural_segments(begin, std::min(end, body_end))))) {
             continue;
@@ -522,7 +524,7 @@ std::vector<EnglishDetector::Run> EnglishDetector::DetectAll(
       if (index < runs.size() && tail_begin + begin > runs[index].begin) {
         break;  // It would start inside a run that explains more.
       }
-      if (untaught(tail_begin + begin)) {
+      if (untaught(tail_begin + begin, keys.size())) {
         continue;
       }
       if (words_->HasWordStartingWith(tail.substr(begin)) &&
