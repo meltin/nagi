@@ -192,6 +192,47 @@ TEST_F(EnglishDetectorTest, LongCompositionKeepsARunAfterN) {
   }
 }
 
+TEST_F(EnglishDetectorTest, LearnedWords) {
+  const RomajiReader reader(&table_);
+  EnglishDetector detector(&words_, &reader, &judge_);
+  const auto show = [&](std::string_view keys) {
+    return detector.Display(keys, detector.Detect(keys, true), true);
+  };
+  words_.Add("made", {.scowl_size = 35, .in_cspell = true});
+  judge_.costs_["まで"] = 3500;
+  judge_.segments_["まで"] = {{6, 3500}};
+  EXPECT_EQ(show("made"), "まで");
+  EXPECT_EQ(show("git"), "git");
+
+  // "made" is English once taught, "git" is not, and "kubectl" is although
+  // no list has it.
+  const LearnedWords learned = {
+      {"made", true}, {"git", false}, {"kubectl", true}};
+  detector.set_learned(&learned);
+  EXPECT_EQ(show("made"), "made");
+  EXPECT_EQ(show("git"), "ぎｔ");
+  // Nor is anything that begins inside it.
+  words_.Add("gits", {.scowl_size = 60});
+  EXPECT_EQ(show("gits"), "ぎｔｓ");
+  EXPECT_EQ(show("kubectl"), "kubectl");
+  // Also while it is typed key by key, when the word shows up at the last key.
+  const LearnedWords google = {{"google", false}};
+  detector.set_learned(&google);
+  std::vector<EnglishDetector::Run> runs;
+  std::string keys;
+  for (const char c : std::string("google")) {
+    keys.push_back(c);
+    const std::vector<EnglishDetector::Run> previous = runs;
+    runs = detector.Detect(keys, false, &previous);
+  }
+  EXPECT_TRUE(runs.empty());
+  detector.set_learned(&learned);
+  // Still not where it costs much: "までにやる" is far more natural.
+  judge_.costs_["までにやる"] = 10000;
+  judge_.costs_["madeにやる"] = 25000;
+  EXPECT_EQ(show("madeniyaru"), "までにやる");
+}
+
 TEST_F(EnglishDetectorTest, OnlyLowerCaseLetters) {
   // Capitals and digits are the session's business: the composer already
   // switches to ASCII on a capital.

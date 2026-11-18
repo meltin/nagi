@@ -13,6 +13,7 @@
 #include <utility>
 
 #include "absl/flags/flag.h"
+#include "absl/strings/str_split.h"
 #include "base/init_mozc.h"
 #include "composer/table.h"
 #include "converter/converter.h"
@@ -25,6 +26,8 @@ ABSL_FLAG(int32_t, unreadable_margin, -1, "Overrides the option when >= 0.");
 ABSL_FLAG(int32_t, known_word_margin_bonus, -1, "Overrides the option when >= 0.");
 ABSL_FLAG(int32_t, natural_segment_cost, -1, "Overrides the option when >= 0.");
 ABSL_FLAG(int32_t, window, -1, "Overrides the option when >= 0.");
+ABSL_FLAG(std::string, learned, "",
+          "Words taught as English, separated by commas.");
 ABSL_FLAG(int32_t, settled, -1, "Overrides the option when >= 0.");
 
 namespace {
@@ -91,6 +94,12 @@ int main(int argc, char** argv) {
     options.window = absl::GetFlag(FLAGS_window);
   }
   detector.set_options(options);
+  mozc::english::LearnedWords learned;
+  for (const std::string_view word :
+       absl::StrSplit(absl::GetFlag(FLAGS_learned), ',', absl::SkipEmpty())) {
+    learned[std::string(word)] = true;
+  }
+  detector.set_learned(&learned);
 
   std::string keys;
   int64_t total_micros = 0;

@@ -87,6 +87,10 @@ class ReadingJudge {
   virtual std::vector<Segment> Segments(std::string_view reading) const = 0;
 };
 
+// What the user taught by correcting: true for a word that is English, false
+// for one that is not.
+using LearnedWords = std::map<std::string, bool, std::less<>>;
+
 // Finds the English words in keys typed in a romaji composition.
 class EnglishDetector {
  public:
@@ -116,6 +120,9 @@ class EnglishDetector {
     // readily: its margin grows and the cost its kana must exceed shrinks.
     int known_word_margin_bonus = 4500;
     int known_word_cost_discount = 2000;
+    // What a taught word that reads as kana may cost in the middle of the
+    // keys.
+    int taught_margin = 12000;
     // A segment of the kana reading that costs less than this is ordinary
     // Japanese. A word that only touches such segments is not English.
     int natural_segment_cost = 10000;
@@ -147,6 +154,11 @@ class EnglishDetector {
   std::vector<Run> Detect(std::string_view keys, bool end_of_input,
                           const std::vector<Run>* previous = nullptr) const;
 
+  // A word learned as English is English wherever a Japanese word could end
+  // before it, also when it is not in the list. One learned as not English
+  // never is. |learned| must outlive the detector.
+  void set_learned(const LearnedWords* learned) { learned_ = learned; }
+
   // What the composition shows for |keys| with |runs|: kana, the runs as
   // typed, and letters that are not read yet in full width.
   std::string Display(std::string_view keys, const std::vector<Run>& runs,
@@ -163,6 +175,7 @@ class EnglishDetector {
   int Cost(const std::string& reading) const;
 
   const EnglishWords* words_;
+  const LearnedWords* learned_ = nullptr;
   const RomajiReader* reader_;
   const ReadingJudge* judge_;
   Options options_;

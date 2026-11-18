@@ -21,6 +21,31 @@ mozc_cc_library(
     ],
 )
 
+mozc_cc_library(
+    name = "english_memory",
+    srcs = ["english_memory.cc"],
+    hdrs = ["english_memory.h"],
+    deps = [
+        ":english_detector",
+        "//base:file_util",
+        "//base:system_util",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+mozc_cc_test(
+    name = "english_memory_test",
+    size = "small",
+    srcs = ["english_memory_test.cc"],
+    deps = [
+        ":english_memory",
+        "//testing:gunit_main",
+        "//testing:mozctest",
+    ],
+)
+
 mozc_embed_file(
     name = "gen_english_words",
     srcs = ["//data/english_nagi:english_words"],

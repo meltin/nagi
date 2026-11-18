@@ -299,6 +299,24 @@ std::vector<EnglishDetector::Run> EnglishDetector::DetectAll(
     return Cost(reading) + static_cast<int>(letters) * options_.unread_letter_cost;
   };
 
+  // Where the words taught not to be English are. Nothing English begins
+  // inside one: not "tests" or "est" where "test" is kana.
+  std::vector<Run> kana_spans;
+  if (learned_ != nullptr) {
+    for (const auto& [word, english] : *learned_) {
+      for (size_t at = english ? std::string_view::npos : keys.find(word);
+           at != std::string_view::npos; at = keys.find(word, at + 1)) {
+        kana_spans.push_back(Run{at, at + word.size()});
+      }
+    }
+  }
+  const auto untaught = [&kana_spans](size_t begin) {
+    return std::any_of(kana_spans.begin(), kana_spans.end(),
+                       [begin](const Run& span) {
+                         return span.begin <= begin && begin < span.end;
+                       });
+  };
+
   while (runs.size() < options_.max_runs) {
     const int cost_now = cost_of(runs);
     // Where the converter cuts the reading as it is now. A word of Japanese
@@ -374,8 +392,20 @@ std::vector<EnglishDetector::Run> EnglishDetector::DetectAll(
         for (size_t end = begin + kMinWordLength; end <= max_end; ++end) {
           const std::string_view word = keys.substr(begin, end - begin);
           const EnglishWords::Info* info = words_->Find(word);
-          if (info == nullptr) {
+          bool taught = false;
+          if (learned_ != nullptr) {
+            const auto it = learned_->find(word);
+            taught = it != learned_->end() && it->second;
+          }
+          if (!taught && untaught(begin)) {
             continue;
+          }
+          static const EnglishWords::Info kTaughtInfo;
+          if (info == nullptr) {
+            if (!taught) {
+              continue;
+            }
+            info = &kTaughtInfo;
           }
           // The word may take the consonants waiting at the end, but not
           // stop in the middle of them. What follows the word need not read
@@ -414,11 +444,18 @@ std::vector<EnglishDetector::Run> EnglishDetector::DetectAll(
                   keys.substr(stretch_begin, kana_end - stretch_begin));
           if (stretch_reads &&
               (!at_segment_edge(begin) ||
-               in_natural_segments(begin, std::min(end, body_end)))) {
+               // A taught word is judged by its cost below instead.
+               (!taught &&
+                in_natural_segments(begin, std::min(end, body_end))))) {
             continue;
           }
           bool english = false;
-          if (!readable) {
+          if (taught) {
+            // In the middle of the keys a taught word that reads as kana
+            // must still not cost much: "todo" is not in "とどかなかった".
+            english = !readable || (last && end >= body_end) ||
+                      delta > -options_.taught_margin;
+          } else if (!readable) {
             english = delta > -options_.unreadable_margin;
           } else {
             const std::string word_kana =
@@ -484,6 +521,9 @@ std::vector<EnglishDetector::Run> EnglishDetector::DetectAll(
       }
       if (index < runs.size() && tail_begin + begin > runs[index].begin) {
         break;  // It would start inside a run that explains more.
+      }
+      if (untaught(tail_begin + begin)) {
+        continue;
       }
       if (words_->HasWordStartingWith(tail.substr(begin)) &&
           reader_->ReadsAsKana(tail.substr(0, begin))) {
