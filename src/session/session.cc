@@ -879,17 +879,18 @@ void Session::LearnEnglishFromCommit(
 }
 
 bool Session::EndsWithEnglishWord() const {
-  const composer::Composer& composer = context_->composer();
-  if (english_runs_.empty() || composer.table() == nullptr ||
-      english_keys_ != composer.GetRawString() ||
-      english_runs_.back().end != english_keys_.size()) {
+  // The keys the automatic input mode looked at last: it runs on this
+  // composition, and nothing was edited since.
+  if (english_keys_.empty() ||
+      english_keys_ != context_->composer().GetRawString()) {
     return false;
   }
-  // A whole word, not the beginning of one still being typed.
-  const english::EnglishDetector::Run& run = english_runs_.back();
-  return english::GetEnglishWords(english::RomajiReader(composer.table()))
-             .Find(std::string_view(english_keys_)
-                       .substr(run.begin, run.end - run.begin)) != nullptr;
+  // What it finds when nothing more is typed. While typing, a consonant at
+  // the end waits for a vowel ("git" may go on to "gita"); after a pause it
+  // is the end of a word, and the preview shows what Enter would commit.
+  const std::vector<english::EnglishDetector::Run> runs =
+      FindEnglish(english_keys_, /*end_of_input=*/true, /*continues=*/false);
+  return !runs.empty() && runs.back().end == english_keys_.size();
 }
 
 void Session::ClearKeptConversion() {
