@@ -63,6 +63,7 @@
 #include "session/keymap.h"
 #include "transliteration/transliteration.h"
 #include "zenz/zenz_client.h"
+#include "zenz/zenz_feedback.h"
 
 #ifdef __APPLE__
 #include <TargetConditionals.h>  // for TARGET_OS_IPHONE
@@ -770,7 +771,11 @@ bool Session::SendKeyLiveConversionState(commands::Command* command) {
     default:
       // Next candidate, segment operations and so on. From here the user is
       // driving an ordinary conversion by the engine, which must not be
-      // rewritten. This is also the way back from a Zenz correction.
+      // rewritten. This is also the way back from a Zenz correction, and
+      // going back says that the correction was not wanted.
+      if (!zenz_preview_.empty() && RemembersZenzFeedback()) {
+        zenz::RejectZenzCorrection(live_conversion_reading_, zenz_preview_);
+      }
       EndLiveConversion();
       return SendKeyConversionState(command);
   }
@@ -867,7 +872,16 @@ bool Session::ApplyLiveConversion(commands::Command* command) {
 
   if (context_->GetConfig().use_zenz_correction() &&
       zenz::IsZenzReading(reading)) {
-    if (context_->GetConfig().zenz_delay_msec() == 0) {
+    std::optional<std::string> accepted;
+    if (RemembersZenzFeedback()) {
+      accepted = zenz::AcceptedZenzCorrection(reading);
+    }
+    if (accepted.has_value()) {
+      // The user committed this correction for this reading before. Show it
+      // at once, without asking Zenz again.
+      zenz_state_ = kZenzApplied;
+      zenz_preview_ = std::move(*accepted);
+    } else if (context_->GetConfig().zenz_delay_msec() == 0) {
       StartZenzCorrection();
     } else {
       zenz_state_ = kZenzWaiting;
@@ -875,6 +889,12 @@ bool Session::ApplyLiveConversion(commands::Command* command) {
   }
   Output(command);
   return true;
+}
+
+bool Session::RemembersZenzFeedback() const {
+  // Like the engine's own history: nothing is recorded or recalled in
+  // incognito mode. Password fields never reach Zenz at all.
+  return !context_->GetConfig().incognito_mode();
 }
 
 void Session::DecorateLivePreview(commands::Command* command) {
@@ -919,6 +939,17 @@ void Session::DecorateLivePreview(commands::Command* command) {
       }
     }
     live_conversion_engine_text_ = std::move(engine_text);
+    if (zenz_state_ == kZenzApplied &&
+        (zenz_preview_ == live_conversion_engine_text_ ||
+         !zenz::KeepsEngineText(
+             live_conversion_engine_text_, zenz_preview_,
+             context_->converter().GetSelectedUserDictionaryValues()))) {
+      // A remembered correction that the engine now produces by itself, or
+      // that no longer fits what the engine converts (a new user dictionary
+      // word, for example).
+      zenz_state_ = kZenzDone;
+      zenz_preview_.clear();
+    }
     if (!zenz_preview_.empty()) {
       preedit->clear_segment();
       commands::Preedit::Segment* segment = preedit->add_segment();
@@ -1003,12 +1034,15 @@ bool Session::ApplyZenzCorrection(commands::Command* command) {
         } else if (zenz::KeepsEngineText(
                        live_conversion_engine_text_, result.text,
                        context_->converter()
-                           .GetSelectedUserDictionaryValues())) {
+                           .GetSelectedUserDictionaryValues()) &&
+                   !zenz::IsRejectedZenzCorrection(live_conversion_reading_,
+                                                   result.text)) {
           zenz_state_ = kZenzApplied;
           zenz_preview_ = std::move(result.text);
         } else {
           // It drops typed characters, invents Latin text or emoji, or
-          // rewrites a user dictionary word. The engine's conversion stays.
+          // rewrites a user dictionary word, or the user turned this very
+          // correction back before. The engine's conversion stays.
           zenz_state_ = kZenzDone;
         }
       } else {
@@ -1025,8 +1059,12 @@ bool Session::CommitZenzPreview(commands::Command* command) {
   const std::string text = zenz_preview_;
   EndLiveConversion();
   PushUndoContext();
-  // shortcut: the engine does not learn text it did not produce. Feed Zenz
-  // commits to the user history when that starts to matter.
+  if (RemembersZenzFeedback()) {
+    zenz::AcceptZenzCorrection(reading, text);
+  }
+  // shortcut: remembered for this reading only. The engine's own history does
+  // not learn text it did not produce, so other sentences do not benefit.
+  // Feed Zenz commits to the user history when that starts to matter.
   CommitStringDirectly(reading, text, command);
   return true;
 }

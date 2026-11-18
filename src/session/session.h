@@ -432,6 +432,8 @@ class Session {
   // it. Does nothing when nothing is kept.
   void DecorateKeptConversion(mozc::commands::Command* command) const;
   bool CommitKeptConversion(mozc::commands::Command* command);
+  // False in incognito mode: Zenz corrections are neither recorded nor recalled.
+  bool RemembersZenzFeedback() const;
   // Forgets the live conversion preview and its Zenz correction.
   void EndLiveConversion();
   // Turns the conversion output into the preview: the engine's conversion,

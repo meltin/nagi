@@ -11350,6 +11350,80 @@ TEST_F(ZenzSessionTest, UserDictionaryWordIsNotRewritten) {
   EXPECT_FALSE(command.output().has_callback());
 }
 
+TEST_F(ZenzSessionTest, AcceptedCorrectionIsShownAtOnceNextTime) {
+  FakeZenzClient zenz_client;
+  MockEngine engine;
+  SetUpEngine(&engine);
+  Session session(engine);
+  session.SetConfig(ZenzConfig());
+  InitSessionToPrecomposition(&session);
+
+  commands::Command command = TypeAndApplyLiveConversion(&session);
+  zenz_client.Answer("アイウエオ");
+  command = SendCallback(command, &session);
+  command.Clear();
+  SendKey("Enter", &session, &command);
+  EXPECT_RESULT("アイウエオ", command);
+  EXPECT_EQ(zenz_client.request_count_, 1);
+
+  // The same reading again: no waiting and no second request.
+  command = TypeAndApplyLiveConversion(&session);
+  EXPECT_PREEDIT("アイウエオ", command);
+  EXPECT_EQ(command.output().conversion_status(),
+            commands::Output::CONVERSION_STATUS_ZENZ);
+  EXPECT_FALSE(command.output().has_callback());
+  EXPECT_EQ(zenz_client.request_count_, 1);
+}
+
+TEST_F(ZenzSessionTest, RejectedCorrectionIsNotShownAgain) {
+  FakeZenzClient zenz_client;
+  MockEngine engine;
+  SetUpEngine(&engine);
+  Session session(engine);
+  session.SetConfig(ZenzConfig());
+  InitSessionToPrecomposition(&session);
+
+  commands::Command command = TypeAndApplyLiveConversion(&session);
+  zenz_client.Answer("アイウエオ");
+  command = SendCallback(command, &session);
+  EXPECT_PREEDIT("アイウエオ", command);
+  // Space goes back to the engine's conversion: the correction was not wanted.
+  command.Clear();
+  SendKey("Space", &session, &command);
+  command.Clear();
+  SendKey("Enter", &session, &command);
+
+  command = TypeAndApplyLiveConversion(&session);
+  zenz_client.Answer("アイウエオ");
+  command = SendCallback(command, &session);
+  EXPECT_PREEDIT("愛上尾", command);
+  EXPECT_EQ(command.output().conversion_status(),
+            commands::Output::CONVERSION_STATUS_ENGINE);
+}
+
+TEST_F(ZenzSessionTest, NothingIsRememberedInIncognitoMode) {
+  FakeZenzClient zenz_client;
+  MockEngine engine;
+  SetUpEngine(&engine);
+  Session session(engine);
+  config::Config config = ZenzConfig();
+  config.set_incognito_mode(true);
+  session.SetConfig(config);
+  InitSessionToPrecomposition(&session);
+
+  commands::Command command = TypeAndApplyLiveConversion(&session);
+  zenz_client.Answer("アイウエオ");
+  command = SendCallback(command, &session);
+  command.Clear();
+  SendKey("Enter", &session, &command);
+  EXPECT_RESULT("アイウエオ", command);
+
+  // Zenz is asked again, as if it were the first time.
+  command = TypeAndApplyLiveConversion(&session);
+  EXPECT_PREEDIT("愛上尾", command);
+  EXPECT_EQ(zenz_client.request_count_, 2);
+}
+
 TEST_F(ZenzSessionTest, AgreementKeepsTheEngineConversion) {
   FakeZenzClient zenz_client;
   MockEngine engine;
